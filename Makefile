@@ -27,7 +27,7 @@ dist: $(NAME)
 	rm -rf $(NAME)
 	mkdir $(NAME)
 	cp $(SOURCES) $(NAME)
-	tar fcj $(NAME)-`date +%d.%m.%Y`.tar.bz2 $(NAME)
+	tar fcj $(NAME)-`date +%Y%m%d`.tar.bz2 $(NAME)
 	rm -rf $(NAME)
 
 install: $(NAME)
