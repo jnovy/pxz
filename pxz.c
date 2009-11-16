@@ -93,25 +93,28 @@ int main( int argc, char **argv ) {
                                                         
 				if (pipe(pipe_fd) < 0) {
 					perror ("pipe failed");
-					exit (errno);
+					exit (EXIT_FAILURE);
 				}
 
 				if ((pid0=fork()) < 0) {
 					perror ("Fork failed");
-					exit(errno);
+					exit(EXIT_FAILURE);
 				}
 
 				if (!pid0) {
 					close(pipe_fd[0]);
 					dup2(pipe_fd[1], 1);
 					close(pipe_fd[1]);
-					write(1, &m[off], len);
-					exit(0);
+					if (write(1, &m[off], len) < 0){
+						perror("write to pipe failed");
+						exit(EXIT_FAILURE);
+					}
+					exit(EXIT_SUCCESS);
 				}
 
 				if ((pid1=fork()) < 0) {
 					perror ("Fork failed");
-					exit(errno);
+					exit(EXIT_FAILURE);
 				}
 
 				if (!pid1) {
@@ -132,8 +135,7 @@ int main( int argc, char **argv ) {
 						fclose(fo);
 						pclose(fp);
 					}
-
-					exit(1);
+					exit(EXIT_SUCCESS);
 				}
       
 				close(pipe_fd[0]);
