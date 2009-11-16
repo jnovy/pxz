@@ -37,7 +37,7 @@ int main( int argc, char **argv ) {
 	char str[0x100];
 	char buf[0x10000];
 	char xzcmd[0x1000] = "/usr/bin/xz ";
-	FILE *f, *fi;
+	FILE *f;
 	size_t rd;
 	
 	for (files=0, i=1; i<argc; i++) {
@@ -70,14 +70,18 @@ int main( int argc, char **argv ) {
 				procs = 1;
 			}
 			
-			if ( !(fi=fopen(argv[i], "rb")) ) {
+			if ( !(f=fopen(argv[i], "rb")) ) {
 				fprintf(stderr, "Can't open '%s' for reading.\n", argv[i]);
 				return 1;
 			}
 			
-			m = mmap(NULL, s.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fileno(fi), 0);
+			m = mmap(NULL, s.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fileno(f), 0);
+			if (m == MAP_FAILED) {
+				perror("mmap failed");
+				exit(EXIT_FAILURE);
+			}
 			madvise(m, s.st_size, MADV_SEQUENTIAL);
-			fclose(fi);
+			fclose(f);
 
 #pragma omp parallel for private(p)
 			for ( p=0; p<procs; p++ ) {
