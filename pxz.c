@@ -26,19 +26,27 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <omp.h>
 #include <lzma.h>
+
+FILE **ftemp;
+char str[0x100];
+
+void term_handler( int sig __attribute__ ((unused)) ) {
+	unlink(str);
+}
 
 int main( int argc, char **argv ) {
 	int i, files;
 	uint64_t p, procs;
 	struct stat s;
 	uint8_t *m;
-	char str[0x100];
 	char buf[0x10000];
 	char xzcmd[0x1000] = "/usr/bin/xz ";
-	FILE *f;
-	size_t rd;
+	FILE *f, *fp;
+	ssize_t rd;
+	struct sigaction new_action, old_action;
 	
 	for (files=0, i=1; i<argc; i++) {
 		if (argv[i][0] != '-') {
@@ -83,6 +91,11 @@ int main( int argc, char **argv ) {
 			madvise(m, s.st_size, MADV_SEQUENTIAL);
 			fclose(f);
 
+			ftemp = malloc(procs*sizeof(ftemp[0]));
+			for ( p=0; p<procs; p++ ) {
+				ftemp[p] = tmpfile();
+			}
+
 #pragma omp parallel for private(p)
 			for ( p=0; p<procs; p++ ) {
 				int status;
@@ -105,7 +118,7 @@ int main( int argc, char **argv ) {
 					close(pipe_fd[0]);
 					dup2(pipe_fd[1], 1);
 					close(pipe_fd[1]);
-					if (write(1, &m[off], len) < 0){
+					if (write(1, &m[off], len) < 0) {
 						perror("write to pipe failed");
 						exit(EXIT_FAILURE);
 					}
@@ -122,19 +135,16 @@ int main( int argc, char **argv ) {
 					dup2(pipe_fd[0], 0);
 					close(pipe_fd[0]);
 
-					{
-						FILE *fp = popen(xzcmd, "r");
-						FILE *fo;
-						
-						snprintf(str, sizeof(str), "%s%ld.xz", argv[i], p);
-						fo = fopen(str,"wb");
-						
-						while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
-							fwrite(buf, 1, rd, fo);
-						}
-						fclose(fo);
-						pclose(fp);
+					fp = popen(xzcmd, "r");
+					while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
+						fwrite(buf, 1, rd, ftemp[p]);
 					}
+					if (rd < 0) {
+						perror("reading from pipe failed");
+						exit(EXIT_FAILURE);
+					}
+					pclose(fp);
+
 					exit(EXIT_SUCCESS);
 				}
       
@@ -148,17 +158,36 @@ int main( int argc, char **argv ) {
 	
 			snprintf(str, sizeof(str), "%s.xz", argv[i]);
 			f=fopen(str,"wb");
+
+			new_action.sa_handler = term_handler;
+			sigemptyset (&new_action.sa_mask);
+			new_action.sa_flags = 0;
+
+			sigaction(SIGINT, NULL, &old_action);
+			if (old_action.sa_handler != SIG_IGN) sigaction(SIGINT, &new_action, NULL);
+			sigaction(SIGHUP, NULL, &old_action);
+			if (old_action.sa_handler != SIG_IGN) sigaction(SIGHUP, &new_action, NULL);
+			sigaction(SIGTERM, NULL, &old_action);
+			if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
+			
 			for ( p=0; p<procs; p++ ) {
-				FILE *fc;
-				snprintf(str, sizeof(str), "%s%ld.xz", argv[i], p);
-				fc=fopen(str,"rb");
-				while ( (rd=fread(buf, 1, sizeof(buf), fc)) > 0 ) {
+				fseek(ftemp[p], 0, SEEK_SET);
+				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 					fwrite(buf, 1, rd, f);
 				}
-				fclose(fc);
-				unlink(str);
+				if (rd < 0) {
+					perror("reading from temporary file failed");
+					exit(EXIT_FAILURE);
+				}
 			}	
 			fclose(f);
+			free(ftemp);
+
+			sigaction(SIGINT, &old_action, NULL);
+			sigaction(SIGHUP, &old_action, NULL);
+			sigaction(SIGTERM, &old_action, NULL);
+			
+			unlink(argv[i]);
 		}
 	}
 	
