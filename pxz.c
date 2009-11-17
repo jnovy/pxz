@@ -52,7 +52,7 @@ char buf[0x10000];
 char *xzcmd;
 size_t xzcmd_max;
 
-int opt_complevel = 6, opt_stdout, opt_keep, opt_threads;
+unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads;
 char **file;
 int files;
 
@@ -191,7 +191,7 @@ int main( int argc, char **argv ) {
 			exit(EXIT_FAILURE);
 		}
 		
-		if ( s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < procs ) {
+		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < procs ) {
 			procs = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
 			if ( !procs ) procs = 1;
 		}
