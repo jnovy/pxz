@@ -157,7 +157,7 @@ int main( int argc, char **argv ) {
 #else
 			procs = 1;
 #endif
-			if ( opt_threads && procs > opt_threads ) procs = opt_threads;
+			if ( opt_threads > 0 && procs > opt_threads ) procs = opt_threads;
 			
 			if ( stat(file[i], &s)) {
 				fprintf(stderr, "can't stat '%s'.\n", file[i]);
