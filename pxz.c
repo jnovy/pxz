@@ -31,8 +31,24 @@
 #include <omp.h>
 #include <lzma.h>
 
+#define XZ_BINARY "/usr/bin/xz"
+#define ADD_OPT(c) \
+do { \
+	size_t __s = strlen(xzcmd); \
+	if (__s+3 >= xzcmd_max) { \
+		fprintf(stderr,"xz command line too long\n"); \
+		exit(EXIT_FAILURE); \
+	} \
+	xzcmd[__s] = ' '; \
+	xzcmd[__s+1] = '-'; \
+	xzcmd[__s+2] = c; \
+	xzcmd[__s+3] = '\0';\
+} while (0);
+
 FILE **ftemp;
 char str[0x100];
+char *xzcmd;
+size_t xzcmd_max;
 
 int opt_complevel = 6, opt_stdout, opt_keep, opt_threads;
 char **file;
@@ -85,7 +101,7 @@ const struct option long_opts[] = {
 };
 
 void __attribute__((noreturn)) run_xz( char **argv ) {
-	execvp("/usr/bin/xz", argv);
+	execvp(XZ_BINARY, argv);
 	perror("xz execution failed");
 	exit(EXIT_FAILURE);
 }
@@ -98,7 +114,14 @@ void parse_args( int argc, char **argv ) {
 			case '0': case '1': case '2': case '3': case '4':
 			case '5': case '6': case '7': case '8': case '9':
 				opt_complevel = c - '0';
-			break;
+				ADD_OPT(c);
+				break;
+			case 'e':
+			case 'q':
+			case 'v':
+			case 'Q':
+				ADD_OPT(c);
+				break;
 			case 'k':
 				opt_keep = 1;
 				break;
@@ -144,10 +167,13 @@ int main( int argc, char **argv ) {
 	struct stat s;
 	uint8_t *m;
 	char buf[0x10000];
-	char xzcmd[0x1000] = "/usr/bin/xz ";
 	FILE *f, *fp;
 	ssize_t rd;
 	struct sigaction new_action, old_action;
+	
+	xzcmd_max = sysconf(_SC_ARG_MAX);
+	xzcmd = malloc(xzcmd_max);
+	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
 	
