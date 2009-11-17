@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -179,133 +180,134 @@ int main( int argc, char **argv ) {
 	
 	for (i=0; i<files; i++) {
 #ifdef _OPENMP
-			procs = omp_get_max_threads();
+		procs = omp_get_max_threads();
 #else
-			procs = 1;
+		procs = 1;
 #endif
-			if ( opt_threads > 0 && procs > opt_threads ) procs = opt_threads;
-			
-			if ( stat(file[i], &s)) {
-				fprintf(stderr, "can't stat '%s'.\n", file[i]);
-				exit(EXIT_FAILURE);
-			}
-			
-			if ( opt_complevel >= 3 && s.st_size < (1<<(opt_complevel-3))<<20 ) {
-				procs = 1;
-			}
-			
-			if ( !(f=fopen(file[i], "rb")) ) {
-				fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
-				exit(EXIT_FAILURE);
-			}
-			
-			m = mmap(NULL, s.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fileno(f), 0);
-			if (m == MAP_FAILED) {
-				perror("mmap failed");
-				exit(EXIT_FAILURE);
-			}
-			madvise(m, s.st_size, MADV_SEQUENTIAL);
-			fclose(f);
-			
-			ftemp = malloc(procs*sizeof(ftemp[0]));
-			for ( p=0; p<procs; p++ ) {
-				ftemp[p] = tmpfile();
-			}
+		if ( opt_threads > 0 && procs > opt_threads ) procs = opt_threads;
+		
+		if ( stat(file[i], &s)) {
+			fprintf(stderr, "can't stat '%s'.\n", file[i]);
+			exit(EXIT_FAILURE);
+		}
+		
+		if ( s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < procs ) {
+			procs = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
+			if ( !procs ) procs = 1;
+		}
+		
+		if ( !(f=fopen(file[i], "rb")) ) {
+			fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
+			exit(EXIT_FAILURE);
+		}
+		
+		m = mmap(NULL, s.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fileno(f), 0);
+		if (m == MAP_FAILED) {
+			perror("mmap failed");
+			exit(EXIT_FAILURE);
+		}
+		madvise(m, s.st_size, MADV_SEQUENTIAL);
+		fclose(f);
+		
+		ftemp = malloc(procs*sizeof(ftemp[0]));
+		for ( p=0; p<procs; p++ ) {
+			ftemp[p] = tmpfile();
+		}
 #pragma omp parallel for private(p) num_threads(procs)
-			for ( p=0; p<procs; p++ ) {
-				int status;
-				int pid0, pid1;
-				int pipe_fd[2];
-				off_t off = s.st_size*p/procs;
-				off_t len = p<procs-1 ? s.st_size/procs : s.st_size-(s.st_size*p/procs);
-				
-				if (pipe(pipe_fd) < 0) {
-					perror ("pipe failed");
-					exit (EXIT_FAILURE);
-				}
-				
-				if ((pid0=fork()) < 0) {
-					perror ("fork failed");
-					exit(EXIT_FAILURE);
-				}
-				
-				if (!pid0) {
-					close(pipe_fd[0]);
-					dup2(pipe_fd[1], 1);
-					close(pipe_fd[1]);
-					if (write(1, &m[off], len) < 0) {
-						perror("write to pipe failed");
-						exit(EXIT_FAILURE);
-					}
-					exit(EXIT_SUCCESS);
-				}
-				
-				if ((pid1=fork()) < 0) {
-					perror ("fork failed");
-					exit(EXIT_FAILURE);
-				}
-				
-				if (!pid1) {
-					close(pipe_fd[1]);
-					dup2(pipe_fd[0], 0);
-					close(pipe_fd[0]);
-					
-					fp = popen(xzcmd, "r");
-					while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
-						fwrite(buf, 1, rd, ftemp[p]);
-					}
-					if (rd < 0) {
-						perror("reading from pipe failed");
-						exit(EXIT_FAILURE);
-					}
-					pclose(fp);
-					
-					exit(EXIT_SUCCESS);
-				}
-				
-				close(pipe_fd[0]);
-				close(pipe_fd[1]);
-				
-				waitpid (pid1, &status, 0);
+		for ( p=0; p<procs; p++ ) {
+			int status;
+			int pid0, pid1;
+			int pipe_fd[2];
+			off_t off = s.st_size*p/procs;
+			off_t len = p<procs-1 ? s.st_size/procs : s.st_size-(s.st_size*p/procs);
+			
+			if (pipe(pipe_fd) < 0) {
+				perror ("pipe failed");
+				exit (EXIT_FAILURE);
 			}
 			
-			munmap(m, s.st_size);
-			
-			snprintf(str, sizeof(str), "%s.xz", file[i]);
-			if ( !(f=fopen(str,"wb")) ) {
-				perror("error creating target archive");
+			if ((pid0=fork()) < 0) {
+				perror ("fork failed");
 				exit(EXIT_FAILURE);
 			}
 			
-			new_action.sa_handler = term_handler;
-			sigemptyset (&new_action.sa_mask);
-			new_action.sa_flags = 0;
+			if (!pid0) {
+				close(pipe_fd[0]);
+				dup2(pipe_fd[1], 1);
+				close(pipe_fd[1]);
+				if (write(1, &m[off], len) < 0) {
+					perror("write to pipe failed");
+					exit(EXIT_FAILURE);
+				}
+				exit(EXIT_SUCCESS);
+			}
 			
-			sigaction(SIGINT, NULL, &old_action);
-			if (old_action.sa_handler != SIG_IGN) sigaction(SIGINT, &new_action, NULL);
-			sigaction(SIGHUP, NULL, &old_action);
-			if (old_action.sa_handler != SIG_IGN) sigaction(SIGHUP, &new_action, NULL);
-			sigaction(SIGTERM, NULL, &old_action);
-			if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
+			if ((pid1=fork()) < 0) {
+				perror ("fork failed");
+				exit(EXIT_FAILURE);
+			}
 			
-			for ( p=0; p<procs; p++ ) {
-				fseek(ftemp[p], 0, SEEK_SET);
-				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
-					fwrite(buf, 1, rd, f);
+			if (!pid1) {
+				close(pipe_fd[1]);
+				dup2(pipe_fd[0], 0);
+				close(pipe_fd[0]);
+				
+				fp = popen(xzcmd, "r");
+				while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
+					fwrite(buf, 1, rd, ftemp[p]);
 				}
 				if (rd < 0) {
-					perror("reading from temporary file failed");
+					perror("reading from pipe failed");
 					exit(EXIT_FAILURE);
 				}
+				pclose(fp);
+				
+				exit(EXIT_SUCCESS);
 			}
-			fclose(f);
-			free(ftemp);
 			
-			sigaction(SIGINT, &old_action, NULL);
-			sigaction(SIGHUP, &old_action, NULL);
-			sigaction(SIGTERM, &old_action, NULL);
+			close(pipe_fd[0]);
+			close(pipe_fd[1]);
 			
-			if ( !opt_keep ) unlink(file[i]);
+			waitpid (pid1, &status, 0);
+		}
+		
+		munmap(m, s.st_size);
+		
+		snprintf(str, sizeof(str), "%s.xz", file[i]);
+		if ( !(f=fopen(str,"wb")) ) {
+			perror("error creating target archive");
+			exit(EXIT_FAILURE);
+		}
+		
+		new_action.sa_handler = term_handler;
+		sigemptyset (&new_action.sa_mask);
+		new_action.sa_flags = 0;
+		
+		sigaction(SIGINT, NULL, &old_action);
+		if (old_action.sa_handler != SIG_IGN) sigaction(SIGINT, &new_action, NULL);
+		sigaction(SIGHUP, NULL, &old_action);
+		if (old_action.sa_handler != SIG_IGN) sigaction(SIGHUP, &new_action, NULL);
+		sigaction(SIGTERM, NULL, &old_action);
+		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
+		
+		for ( p=0; p<procs; p++ ) {
+			fseek(ftemp[p], 0, SEEK_SET);
+			while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
+				fwrite(buf, 1, rd, f);
+			}
+			if (rd < 0) {
+				perror("reading from temporary file failed");
+				exit(EXIT_FAILURE);
+			}
+		}
+		fclose(f);
+		free(ftemp);
+		
+		sigaction(SIGINT, &old_action, NULL);
+		sigaction(SIGHUP, &old_action, NULL);
+		sigaction(SIGTERM, &old_action, NULL);
+		
+		if ( !opt_keep ) unlink(file[i]);
 	}
 	
 	return 0;
