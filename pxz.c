@@ -33,6 +33,7 @@
 #include <omp.h>
 #include <lzma.h>
 
+#define PXZ_VERSION "4.999.9beta"
 #define XZ_BINARY "xz"
 #define ADD_OPT(c) \
 do { \
@@ -53,7 +54,7 @@ char buf[0x10000];
 char *xzcmd;
 size_t xzcmd_max;
 
-unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads;
+unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 char **file;
 int files;
 
@@ -119,9 +120,11 @@ void parse_args( int argc, char **argv ) {
 				opt_complevel = c - '0';
 				ADD_OPT(c);
 				break;
+			case 'v':
+				opt_verbose = 1;
+				break;
 			case 'e':
 			case 'q':
-			case 'v':
 			case 'Q':
 				ADD_OPT(c);
 				break;
@@ -133,11 +136,16 @@ void parse_args( int argc, char **argv ) {
 				break;
 			case 'h':
 			case 'H':
-				printf("Parallel XZ-4.999.9beta-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
+				printf("Parallel PXZ-"PXZ_VERSION"-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
 					"Options:\n"
 					"  -T, --threads       specifies maximum threads to run simultaneously\n\n"
 					"Usage and other options are same as in XZ:\n\n");
+				run_xz(argv);
+				break;
 			case 'V':
+				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
+				run_xz(argv);
+				break;
 			case 'd':
 			case 't':
 			case 'l':
@@ -222,6 +230,11 @@ int main( int argc, char **argv ) {
 		for ( p=0; p<procs; p++ ) {
 			ftemp[p] = tmpfile();
 		}
+		
+		if ( opt_verbose ) {
+			printf("Attempting to run in %ld thread%c\n", procs, procs != 1 ? 's' : ' ');
+		}
+		
 #pragma omp parallel for private(p) num_threads(procs)
 		for ( p=0; p<procs; p++ ) {
 			int status;
