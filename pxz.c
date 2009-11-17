@@ -254,7 +254,10 @@ int main( int argc, char **argv ) {
 				
 				fp = popen(xzcmd, "r");
 				while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
-					fwrite(buf, 1, rd, ftemp[p]);
+					if ( !fwrite(buf, 1, rd, ftemp[p]) ) {
+						perror("writing to temp file failed");
+						exit(EXIT_FAILURE);
+					}
 				}
 				if (rd < 0) {
 					perror("reading from pipe failed");
@@ -294,10 +297,15 @@ int main( int argc, char **argv ) {
 		for ( p=0; p<procs; p++ ) {
 			fseek(ftemp[p], 0, SEEK_SET);
 			while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
-				fwrite(buf, 1, rd, f);
+				if ( !fwrite(buf, 1, rd, f) ) {
+					unlink(str);
+					perror("writing to archive failed");
+					exit(EXIT_FAILURE);
+				}
 			}
 			if (rd < 0) {
 				perror("reading from temporary file failed");
+				unlink(str);
 				exit(EXIT_FAILURE);
 			}
 		}
