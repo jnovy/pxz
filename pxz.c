@@ -32,7 +32,7 @@
 #include <omp.h>
 #include <lzma.h>
 
-#define XZ_BINARY "/usr/bin/xz"
+#define XZ_BINARY "xz"
 #define ADD_OPT(c) \
 do { \
 	size_t __s = strlen(xzcmd); \
@@ -48,6 +48,7 @@ do { \
 
 FILE **ftemp;
 char str[0x100];
+char buf[0x10000];
 char *xzcmd;
 size_t xzcmd_max;
 
@@ -167,7 +168,6 @@ int main( int argc, char **argv ) {
 	uint64_t p, procs;
 	struct stat s;
 	uint8_t *m;
-	char buf[0x10000];
 	FILE *f, *fp;
 	ssize_t rd;
 	struct sigaction new_action, old_action;
@@ -269,6 +269,7 @@ int main( int argc, char **argv ) {
 			close(pipe_fd[1]);
 			
 			waitpid (pid1, &status, 0);
+			madvise(&m[off], len, MADV_DONTNEED);
 		}
 		
 		munmap(m, s.st_size);
