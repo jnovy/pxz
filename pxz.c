@@ -1,5 +1,6 @@
 /*
- * Parallel XZ 0.0.1, runs LZMA compression simultaneously on multiple cores.
+ * Parallel XZ 4.999.9beta,
+ * runs LZMA compression simultaneously on multiple cores.
  *
  * Copyright (C) 2009 Jindrich Novy (jnovy@users.sourceforge.net)
  *
@@ -130,12 +131,16 @@ void parse_args( int argc, char **argv ) {
 			case 'T':
 				opt_threads = atoi(optarg);
 				break;
+			case 'h':
+			case 'H':
+				printf("Parallel XZ-4.999.9beta-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
+					"Options:\n"
+					"  -T, --threads       specifies maximum threads to run simultaneously\n\n"
+					"Usage and other options are same as in XZ:\n\n");
 			case 'V':
 			case 'd':
 			case 't':
 			case 'l':
-			case 'h':
-			case 'H':
 				run_xz(argv);
 			default:
 				break;
@@ -194,6 +199,10 @@ int main( int argc, char **argv ) {
 		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < procs ) {
 			procs = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
 			if ( !procs ) procs = 1;
+		}
+		
+		if ( opt_threads && procs > opt_threads ) {
+			procs = opt_threads;
 		}
 		
 		if ( !(f=fopen(file[i], "rb")) ) {

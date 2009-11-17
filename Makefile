@@ -1,7 +1,7 @@
 CC=gcc
 NAME=pxz
 WARNINGS=-Wall -Wshadow -Wcast-align -Wunreachable-code -Winline -Wextra -Wmissing-noreturn
-CFLAGS+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+CFLAGS+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\"
 #CFLAGS+=-DDEBUG -ggdb3
 CFLAGS+=-O2 -fopenmp
 LDFLAGS+=-llzma
