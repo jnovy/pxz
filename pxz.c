@@ -185,8 +185,7 @@ int main( int argc, char **argv ) {
 			for ( p=0; p<procs; p++ ) {
 				ftemp[p] = tmpfile();
 			}
-//#pragma omp parallel for private(p) num_threads(procs)
-#pragma omp parallel for private(p)
+#pragma omp parallel for private(p) num_threads(procs)
 			for ( p=0; p<procs; p++ ) {
 				int status;
 				int pid0, pid1;
