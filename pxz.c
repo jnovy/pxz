@@ -33,7 +33,6 @@
 #include <omp.h>
 #include <lzma.h>
 
-#define PXZ_VERSION "4.999.9beta"
 #define XZ_BINARY "xz"
 #define ADD_OPT(c) \
 do { \

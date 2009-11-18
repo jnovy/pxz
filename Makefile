@@ -1,7 +1,8 @@
-CC=gcc
 NAME=pxz
+VERSION=4.999.9beta
+CC=gcc
 WARNINGS=-Wall -Wshadow -Wcast-align -Wunreachable-code -Winline -Wextra -Wmissing-noreturn
-CFLAGS+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\"
+CFLAGS+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\"
 #CFLAGS+=-DDEBUG -ggdb3
 CFLAGS+=-O2 -fopenmp
 LDFLAGS+=-llzma
@@ -24,14 +25,15 @@ distclean: clean
 
 dist: $(NAME)
 	LANG=C
-	rm -rf $(NAME)
-	mkdir $(NAME)
-	cp $(SOURCES) $(NAME)
-	tar fcj $(NAME)-`date +%Y%m%d`.tar.bz2 $(NAME)
-	rm -rf $(NAME)
+	rm -rf $(NAME)-$(VERSION)
+	mkdir $(NAME)-$(VERSION)
+	cp $(SOURCES) $(NAME)-$(VERSION)
+	tar fcJ $(NAME)-$(VERSION).`date +%Y%m%d`git.tar.xz $(NAME)-$(VERSION)
+	rm -rf $(NAME)-$(VERSION)
 
 install: $(NAME)
-	cp $(NAME) $(BINDIR)
+	mkdir -p $(DESTDIR)$(BINDIR)
+	cp $(NAME) $(DESTDIR)$(BINDIR)
 
 ddd: $(NAME)
 	ddd --args $(EXECUTE)
