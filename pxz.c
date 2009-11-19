@@ -185,7 +185,7 @@ int main( int argc, char **argv ) {
 	struct stat s;
 	uint8_t *m;
 	FILE *f;
-	ssize_t rd;
+	ssize_t rd, ts = 0;
 	struct sigaction new_action, old_action;
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
@@ -233,7 +233,8 @@ int main( int argc, char **argv ) {
 		}
 		
 		if ( opt_verbose ) {
-			printf("%s -> %ld thread%c\n", file[i], threads, threads != 1 ? 's' : ' ');
+			printf("%s -> %ld thread%c: [", file[i], threads, threads != 1 ? 's' : ' ');
+			fflush(stdout);
 		}
 		
 #ifndef PIPE_TO_XZ
@@ -295,6 +296,14 @@ int main( int argc, char **argv ) {
 			lzma_end(&strm);
 			
 			free(mo);
+			
+			if (opt_verbose) {
+				printf("%ld ", p);
+				fflush(stdout);
+			}
+		}
+		if (opt_verbose) {
+			printf("] ");
 		}
 #else /* PIPE_TO_XZ */
 #pragma omp parallel for private(p) num_threads(threads)
@@ -380,14 +389,14 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, NULL, &old_action);
 		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
-		for ( p=0; p<threads; p++ ) {
+		for ( ts=p=0; p<threads; p++ ) {
 			fseek(ftemp[p], 0, SEEK_SET);
 			while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 				if ( !fwrite(buf, 1, rd, f) ) {
 					unlink(str);
 					perror("writing to archive failed");
 					exit(EXIT_FAILURE);
-				}
+				} else ts += rd;
 			}
 			if (rd < 0) {
 				perror("reading from temporary file failed");
@@ -401,6 +410,10 @@ int main( int argc, char **argv ) {
 		sigaction(SIGINT, &old_action, NULL);
 		sigaction(SIGHUP, &old_action, NULL);
 		sigaction(SIGTERM, &old_action, NULL);
+		
+		if ( opt_verbose ) {
+			printf("%ld -> %ld %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
+		}
 		
 		if ( !opt_keep ) unlink(file[i]);
 	}
