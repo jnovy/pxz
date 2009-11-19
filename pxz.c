@@ -54,6 +54,7 @@ char *xzcmd;
 size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
+unsigned opt_force;
 char **file;
 int files;
 
@@ -122,6 +123,9 @@ void parse_args( int argc, char **argv ) {
 			case 'v':
 				opt_verbose = 1;
 				break;
+			case 'f':
+				opt_force = 1;
+				break;
 			case 'e':
 			case 'q':
 			case 'Q':
@@ -179,7 +183,7 @@ int main( int argc, char **argv ) {
 	int i;
 	uint64_t p, threads;
 	struct stat s;
-	uint8_t *m, *mo;
+	uint8_t *m;
 	FILE *f;
 	ssize_t rd;
 	struct sigaction new_action, old_action;
@@ -206,7 +210,7 @@ int main( int argc, char **argv ) {
 			if ( !threads ) threads = 1;
 		}
 		
-		if ( opt_threads && threads > opt_threads ) {
+		if ( opt_threads && (threads > opt_threads || opt_force) ) {
 			threads = opt_threads;
 		}
 		
@@ -229,18 +233,20 @@ int main( int argc, char **argv ) {
 		}
 		
 		if ( opt_verbose ) {
-			printf("Attempting to run in %ld thread%c\n", threads, threads != 1 ? 's' : ' ');
+			printf("%s -> %ld thread%c\n", file[i], threads, threads != 1 ? 's' : ' ');
 		}
 		
 #ifndef PIPE_TO_XZ
 #define BUFFSIZE 0x10000
-		mo = malloc(threads*BUFFSIZE);
 #pragma omp parallel for private(p) num_threads(threads)
 		for ( p=0; p<threads; p++ ) {
 			off_t off = s.st_size*p/threads, pt;
 			off_t len = p<threads-1 ? s.st_size/threads : s.st_size-(s.st_size*p/threads);
+			uint8_t *mo;
 			lzma_stream strm = LZMA_STREAM_INIT;
 			lzma_ret ret;
+			
+			mo = malloc(BUFFSIZE);
 			
 			if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_SHA256) != LZMA_OK ) {
 				fprintf(stderr, "unable to initialize LZMA encoder\n");
@@ -250,7 +256,7 @@ int main( int argc, char **argv ) {
 			for (pt=0; pt<len; pt+=BUFFSIZE) {
 				strm.next_in = &m[off+pt];
 				strm.avail_in = len-pt >= BUFFSIZE ? BUFFSIZE : len-pt;
-				strm.next_out = &mo[p*BUFFSIZE];
+				strm.next_out = mo;
 				strm.avail_out = BUFFSIZE;
 				do {
 					ret = lzma_code(&strm, LZMA_RUN);
@@ -259,17 +265,17 @@ int main( int argc, char **argv ) {
 						exit(EXIT_FAILURE);
 					}
 					if ( BUFFSIZE - strm.avail_out > 0 ) {
-						if ( !fwrite(&mo[p*BUFFSIZE], 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
 							perror("writing to temp file failed");
 							exit(EXIT_FAILURE);
 						}
-						strm.next_out = &mo[p*BUFFSIZE];
+						strm.next_out = mo;
 						strm.avail_out = BUFFSIZE;
 					}
 				} while ( strm.avail_in );
 			}
 			
-			strm.next_out = &mo[p*BUFFSIZE];
+			strm.next_out = mo;
 			strm.avail_out = BUFFSIZE;
 			do {
 				ret = lzma_code(&strm, LZMA_FINISH);
@@ -278,18 +284,18 @@ int main( int argc, char **argv ) {
 					exit(EXIT_FAILURE);
 				}
 				if ( BUFFSIZE - strm.avail_out > 0 ) {
-					if ( !fwrite(&mo[p*BUFFSIZE], 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+					if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
 						perror("writing to temp file failed");
 						exit(EXIT_FAILURE);
 					}
-					strm.next_out = &mo[p*BUFFSIZE];
+					strm.next_out = mo;
 					strm.avail_out = BUFFSIZE;
 				}
 			} while ( ret == LZMA_OK );
 			lzma_end(&strm);
-//			free(mo[p]);
+			
+			free(mo);
 		}
-		free(mo);
 #else /* PIPE_TO_XZ */
 #pragma omp parallel for private(p) num_threads(threads)
 		for ( p=0; p<threads; p++ ) {
