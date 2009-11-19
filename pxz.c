@@ -177,7 +177,7 @@ void term_handler( int sig __attribute__ ((unused)) ) {
 
 int main( int argc, char **argv ) {
 	int i;
-	uint64_t p, procs;
+	uint64_t p, threads;
 	struct stat s;
 	uint8_t *m;
 	FILE *f, *fp;
@@ -192,24 +192,22 @@ int main( int argc, char **argv ) {
 	
 	for (i=0; i<files; i++) {
 #ifdef _OPENMP
-		procs = omp_get_max_threads();
+		threads = omp_get_max_threads();
 #else
-		procs = 1;
+		threads = 1;
 #endif
-		if ( opt_threads > 0 && procs > opt_threads ) procs = opt_threads;
-		
 		if ( stat(file[i], &s)) {
 			fprintf(stderr, "can't stat '%s'.\n", file[i]);
 			exit(EXIT_FAILURE);
 		}
 		
-		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < procs ) {
-			procs = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
-			if ( !procs ) procs = 1;
+		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < threads ) {
+			threads = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
+			if ( !threads ) threads = 1;
 		}
 		
-		if ( opt_threads && procs > opt_threads ) {
-			procs = opt_threads;
+		if ( opt_threads && threads > opt_threads ) {
+			threads = opt_threads;
 		}
 		
 		if ( !(f=fopen(file[i], "rb")) ) {
@@ -225,22 +223,22 @@ int main( int argc, char **argv ) {
 		madvise(m, s.st_size, MADV_SEQUENTIAL);
 		fclose(f);
 		
-		ftemp = malloc(procs*sizeof(ftemp[0]));
-		for ( p=0; p<procs; p++ ) {
+		ftemp = malloc(threads*sizeof(ftemp[0]));
+		for ( p=0; p<threads; p++ ) {
 			ftemp[p] = tmpfile();
 		}
 		
 		if ( opt_verbose ) {
-			printf("Attempting to run in %ld thread%c\n", procs, procs != 1 ? 's' : ' ');
+			printf("Attempting to run in %ld thread%c\n", threads, threads != 1 ? 's' : ' ');
 		}
 		
-#pragma omp parallel for private(p) num_threads(procs)
-		for ( p=0; p<procs; p++ ) {
+#pragma omp parallel for private(p) num_threads(threads)
+		for ( p=0; p<threads; p++ ) {
 			int status;
 			int pid0, pid1;
 			int pipe_fd[2];
-			off_t off = s.st_size*p/procs;
-			off_t len = p<procs-1 ? s.st_size/procs : s.st_size-(s.st_size*p/procs);
+			off_t off = s.st_size*p/threads;
+			off_t len = p<threads-1 ? s.st_size/threads : s.st_size-(s.st_size*p/threads);
 			
 			if (pipe(pipe_fd) < 0) {
 				perror ("pipe failed");
@@ -315,7 +313,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, NULL, &old_action);
 		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
-		for ( p=0; p<procs; p++ ) {
+		for ( p=0; p<threads; p++ ) {
 			fseek(ftemp[p], 0, SEEK_SET);
 			while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 				if ( !fwrite(buf, 1, rd, f) ) {
