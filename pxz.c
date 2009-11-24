@@ -200,6 +200,12 @@ int main( int argc, char **argv ) {
 #else
 		threads = 1;
 #endif
+		if ( (rd=strlen(file[i])) >= 3 && !strncmp(&file[i][rd-3], ".xz", 3) ) {
+			if (opt_verbose) {
+				fprintf(stderr, "ignoring '%s', it seems to be already compressed\n", file[i]);
+			}
+			continue;
+		}
 		if ( stat(file[i], &s)) {
 			fprintf(stderr, "can't stat '%s'.\n", file[i]);
 			exit(EXIT_FAILURE);
