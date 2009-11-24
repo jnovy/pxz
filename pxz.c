@@ -237,7 +237,6 @@ int main( int argc, char **argv ) {
 			fflush(stdout);
 		}
 		
-#ifndef PIPE_TO_XZ
 #define BUFFSIZE 0x10000
 #pragma omp parallel for private(p) num_threads(threads)
 		for ( p=0; p<threads; p++ ) {
@@ -305,71 +304,6 @@ int main( int argc, char **argv ) {
 		if (opt_verbose) {
 			printf("] ");
 		}
-#else /* PIPE_TO_XZ */
-#pragma omp parallel for private(p) num_threads(threads)
-		for ( p=0; p<threads; p++ ) {
-			off_t off = s.st_size*p/threads;
-			off_t len = p<threads-1 ? s.st_size/threads : s.st_size-(s.st_size*p/threads);
-			int status;
-			int pid0, pid1;
-			int pipe_fd[2];
-			
-			if (pipe(pipe_fd) < 0) {
-				perror ("pipe failed");
-				exit (EXIT_FAILURE);
-			}
-			
-			if ((pid0=fork()) < 0) {
-				perror ("fork failed");
-				exit(EXIT_FAILURE);
-			}
-			
-			if (!pid0) {
-				close(pipe_fd[0]);
-				dup2(pipe_fd[1], 1);
-				close(pipe_fd[1]);
-				if (write(1, &m[off], len) < 0) {
-					perror("write to pipe failed");
-					exit(EXIT_FAILURE);
-				}
-				exit(EXIT_SUCCESS);
-			}
-			
-			if ((pid1=fork()) < 0) {
-				perror ("fork failed");
-				exit(EXIT_FAILURE);
-			}
-			
-			if (!pid1) {
-				FILE *fp;
-				
-				close(pipe_fd[1]);
-				dup2(pipe_fd[0], 0);
-				close(pipe_fd[0]);
-				
-				fp = popen(xzcmd, "r");
-				while ( (rd=fread(buf, 1, sizeof(buf), fp)) > 0 ) {
-					if ( !fwrite(buf, 1, rd, ftemp[p]) ) {
-						perror("writing to temp file failed");
-						exit(EXIT_FAILURE);
-					}
-				}
-				if (rd < 0) {
-					perror("reading from pipe failed");
-					exit(EXIT_FAILURE);
-				}
-				pclose(fp);
-				
-				exit(EXIT_SUCCESS);
-			}
-			
-			close(pipe_fd[0]);
-			close(pipe_fd[1]);
-			
-			waitpid (pid1, &status, 0);
-			madvise(&m[off], len, MADV_DONTNEED);
-		}
-#endif /* PIPE_TO_XZ */
 		munmap(m, s.st_size);
 		
 		snprintf(str, sizeof(str), "%s.xz", file[i]);
