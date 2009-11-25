@@ -28,6 +28,8 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/time.h>
+#include <utime.h>
 #include <signal.h>
 #include <getopt.h>
 #include <omp.h>
@@ -189,6 +191,7 @@ int main( int argc, char **argv ) {
 	FILE *f;
 	ssize_t rd, ts = 0;
 	struct sigaction new_action, old_action;
+	struct utimbuf u;
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	xzcmd = malloc(xzcmd_max);
@@ -348,6 +351,17 @@ int main( int argc, char **argv ) {
 		}
 		fclose(f);
 		free(ftemp);
+		
+		if ( chmod(str, s.st_mode) ) {
+			perror("warning: unable to change archive permissions");
+		}
+
+		u.actime = s.st_atime;
+		u.modtime = s.st_mtime;
+		
+		if ( utime(str, &u) ) {
+			perror("warning: unable to change archive timestamp");
+		}
 		
 		sigaction(SIGINT, &old_action, NULL);
 		sigaction(SIGHUP, &old_action, NULL);
