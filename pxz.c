@@ -33,7 +33,9 @@
 #include <omp.h>
 #include <lzma.h>
 
+#ifndef XZ_BINARY
 #define XZ_BINARY "xz"
+#endif
 #define ADD_OPT(c) \
 do { \
 	size_t __s = strlen(xzcmd); \
