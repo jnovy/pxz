@@ -58,7 +58,7 @@ char *xzcmd;
 size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
-unsigned opt_force;
+unsigned opt_force, opt_stdout;
 char **file;
 int files;
 
@@ -134,6 +134,9 @@ void parse_args( int argc, char **argv ) {
 			case 'q':
 			case 'Q':
 				ADD_OPT(c);
+				break;
+			case 'c':
+				opt_stdout = 1;
 				break;
 			case 'k':
 				opt_keep = 1;
@@ -243,7 +246,7 @@ int main( int argc, char **argv ) {
 			ftemp[p] = tmpfile();
 		}
 		
-		if ( opt_verbose ) {
+		if ( opt_verbose && !opt_stdout ) {
 			printf("%s -> %ld thread%c: [", file[i], threads, threads != 1 ? 's' : ' ');
 			fflush(stdout);
 		}
@@ -307,15 +310,33 @@ int main( int argc, char **argv ) {
 			
 			free(mo);
 			
-			if (opt_verbose) {
+			if (opt_verbose && !opt_stdout) {
 				printf("%ld ", p);
 				fflush(stdout);
 			}
 		}
-		if (opt_verbose) {
+		if (opt_verbose && !opt_stdout) {
 			printf("] ");
 		}
 		munmap(m, s.st_size);
+		
+		if ( opt_stdout ) {
+			for ( p=0; p<threads; p++ ) {
+				fseek(ftemp[p], 0, SEEK_SET);
+				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
+					if ( write(STDOUT_FILENO, buf, rd) < 0 ) {
+						perror("writing to standard output failed");
+						exit(EXIT_FAILURE);
+					}
+				}
+				if (rd < 0) {
+					perror("reading from temporary file failed");
+					exit(EXIT_FAILURE);
+				}
+			}
+			free(ftemp);
+			return 0;
+		}
 		
 		snprintf(str, sizeof(str), "%s.xz", file[i]);
 		if ( !(f=fopen(str,"wb")) ) {
