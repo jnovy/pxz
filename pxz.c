@@ -262,7 +262,7 @@ int main( int argc, char **argv ) {
 			
 			mo = malloc(BUFFSIZE);
 			
-			if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_SHA256) != LZMA_OK ) {
+			if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_CRC64) != LZMA_OK ) {
 				fprintf(stderr, "unable to initialize LZMA encoder\n");
 				exit(EXIT_FAILURE);
 			}
