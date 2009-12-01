@@ -38,6 +38,9 @@
 #ifndef XZ_BINARY
 #define XZ_BINARY "xz"
 #endif
+
+#define BUFFSIZE 0x10000
+
 #define ADD_OPT(c) \
 do { \
 	size_t __s = strlen(xzcmd); \
@@ -53,7 +56,7 @@ do { \
 
 FILE **ftemp;
 char str[0x100];
-char buf[0x10000];
+char buf[BUFFSIZE];
 char *xzcmd;
 size_t xzcmd_max;
 
@@ -166,13 +169,18 @@ void parse_args( int argc, char **argv ) {
 	}
 	
 	if (!argv[optind]) {
-		fprintf(stderr,"no files given.\n");
-		exit(EXIT_FAILURE);
+		file = malloc(sizeof(*file));
+		*file = "-";
+		files = 1;
 	} else {
 		file = &argv[optind];
 		files = argc-optind;
 		for (c=0; c<files; c++) {
 			struct stat s;
+			
+			if ( file[c][0] == '-' && file[c][1] == '\0' ) {
+				continue;
+			}
 			
 			if ( stat(file[c], &s)) {
 				fprintf(stderr, "can't stat '%s'.\n", file[c]);
@@ -190,7 +198,7 @@ int main( int argc, char **argv ) {
 	int i;
 	uint64_t p, threads;
 	struct stat s;
-	uint8_t *m;
+	uint8_t *m = NULL;
 	FILE *f;
 	ssize_t rd, ts = 0;
 	struct sigaction new_action, old_action;
@@ -203,6 +211,7 @@ int main( int argc, char **argv ) {
 	parse_args(argc, argv);
 	
 	for (i=0; i<files; i++) {
+		int std_in = file[i][0] == '-' && file[i][1] == '\0';
 #ifdef _OPENMP
 		threads = omp_get_max_threads();
 #else
@@ -214,9 +223,24 @@ int main( int argc, char **argv ) {
 			}
 			continue;
 		}
-		if ( stat(file[i], &s)) {
-			fprintf(stderr, "can't stat '%s'.\n", file[i]);
-			exit(EXIT_FAILURE);
+		
+		if ( std_in ) {
+			s.st_size = 0;
+			while ( (rd=read(STDIN_FILENO, buf, sizeof(buf))) > 0 ) {
+				s.st_size += rd;
+				m = realloc(m, s.st_size);
+				memcpy(&m[s.st_size-rd], buf, rd);
+			}
+			
+			if (rd < 0) {
+				perror("reading from stadard input failed");
+				exit(EXIT_FAILURE);
+			}
+		} else {
+			if ( stat(file[i], &s)) {
+				fprintf(stderr, "can't stat '%s'.\n", file[i]);
+				exit(EXIT_FAILURE);
+			}
 		}
 		
 		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < threads ) {
@@ -227,6 +251,8 @@ int main( int argc, char **argv ) {
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
 			threads = opt_threads;
 		}
+		
+		if ( std_in ) goto next;
 		
 		if ( !(f=fopen(file[i], "rb")) ) {
 			fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
@@ -240,7 +266,7 @@ int main( int argc, char **argv ) {
 		}
 		madvise(m, s.st_size, MADV_SEQUENTIAL);
 		fclose(f);
-		
+next:		
 		ftemp = malloc(threads*sizeof(ftemp[0]));
 		for ( p=0; p<threads; p++ ) {
 			ftemp[p] = tmpfile();
@@ -251,7 +277,6 @@ int main( int argc, char **argv ) {
 			fflush(stdout);
 		}
 		
-#define BUFFSIZE 0x10000
 #pragma omp parallel for private(p) num_threads(threads)
 		for ( p=0; p<threads; p++ ) {
 			off_t off = s.st_size*p/threads, pt;
@@ -315,12 +340,14 @@ int main( int argc, char **argv ) {
 				fflush(stdout);
 			}
 		}
+
 		if (opt_verbose && !opt_stdout) {
 			printf("] ");
 		}
-		munmap(m, s.st_size);
+
+		if ( !std_in ) munmap(m, s.st_size); else free(m);
 		
-		if ( opt_stdout ) {
+		if ( std_in || opt_stdout ) {
 			for ( p=0; p<threads; p++ ) {
 				fseek(ftemp[p], 0, SEEK_SET);
 				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
@@ -333,6 +360,7 @@ int main( int argc, char **argv ) {
 					perror("reading from temporary file failed");
 					exit(EXIT_FAILURE);
 				}
+				fclose(ftemp[p]);
 			}
 			free(ftemp);
 			return 0;
@@ -369,6 +397,7 @@ int main( int argc, char **argv ) {
 				unlink(str);
 				exit(EXIT_FAILURE);
 			}
+			fclose(ftemp[p]);
 		}
 		fclose(f);
 		free(ftemp);
