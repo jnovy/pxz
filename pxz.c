@@ -32,6 +32,7 @@
 #include <utime.h>
 #include <signal.h>
 #include <getopt.h>
+#include <fcntl.h>
 #include <omp.h>
 #include <lzma.h>
 
@@ -62,6 +63,7 @@ size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 unsigned opt_force, opt_stdout;
+FILE *fi, *fo;
 char **file;
 int files;
 
@@ -190,21 +192,23 @@ void parse_args( int argc, char **argv ) {
 	}
 }
 
-void term_handler( int sig __attribute__ ((unused)) ) {
-	unlink(str);
+void __attribute__((noreturn) )term_handler( int sig __attribute__ ((unused)) ) {
+	if ( fo != stdout ) unlink(str);
+	exit(EXIT_FAILURE);
 }
 
 int main( int argc, char **argv ) {
 	int i;
-	uint64_t p, threads;
+	uint64_t p, threads, chunk_size;
+	uint8_t *m;
 	struct stat s;
-	uint8_t *m = NULL;
-	FILE *f;
 	ssize_t rd, ts = 0;
+	size_t page_size;
 	struct sigaction new_action, old_action;
 	struct utimbuf u;
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
+	page_size = sysconf(_SC_PAGE_SIZE);
 	xzcmd = malloc(xzcmd_max);
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
@@ -224,153 +228,47 @@ int main( int argc, char **argv ) {
 			continue;
 		}
 		
-		if ( std_in ) {
-			s.st_size = 0;
-			while ( (rd=read(STDIN_FILENO, buf, sizeof(buf))) > 0 ) {
-				s.st_size += rd;
-				m = realloc(m, s.st_size);
-				memcpy(&m[s.st_size-rd], buf, rd);
-			}
-			
-			if (rd < 0) {
-				perror("reading from stadard input failed");
-				exit(EXIT_FAILURE);
-			}
-		} else {
+		if ( !std_in ) {
 			if ( stat(file[i], &s)) {
 				fprintf(stderr, "can't stat '%s'.\n", file[i]);
 				exit(EXIT_FAILURE);
 			}
 		}
 		
-		if ( ((uint64_t)s.st_size)>>(opt_complevel <= 1 ? 16 : opt_complevel + 17) < threads ) {
-			threads = s.st_size>>(opt_complevel <= 1 ? 16 : opt_complevel + 17);
-			if ( !threads ) threads = 1;
-		}
-		
+		chunk_size = 3<<(opt_complevel <= 1 ? 16 : opt_complevel + 17);
+		chunk_size = (chunk_size + page_size)&~(page_size-1);
+
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
 			threads = opt_threads;
 		}
 		
-		if ( std_in ) goto next;
-		
-		if ( !(f=fopen(file[i], "rb")) ) {
-			fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
-			exit(EXIT_FAILURE);
-		}
-		
-		m = mmap(NULL, s.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE, fileno(f), 0);
-		if (m == MAP_FAILED) {
-			perror("mmap failed");
-			exit(EXIT_FAILURE);
-		}
-		madvise(m, s.st_size, MADV_SEQUENTIAL);
-		fclose(f);
-next:		
-		ftemp = malloc(threads*sizeof(ftemp[0]));
-		for ( p=0; p<threads; p++ ) {
-			ftemp[p] = tmpfile();
-		}
-		
-		if ( opt_verbose && !opt_stdout ) {
-			printf("%s -> %ld thread%c: [", file[i], threads, threads != 1 ? 's' : ' ');
-			fflush(stdout);
-		}
-		
-#pragma omp parallel for private(p) num_threads(threads)
-		for ( p=0; p<threads; p++ ) {
-			off_t off = s.st_size*p/threads, pt;
-			off_t len = p<threads-1 ? s.st_size/threads : s.st_size-(s.st_size*p/threads);
-			uint8_t *mo;
-			lzma_stream strm = LZMA_STREAM_INIT;
-			lzma_ret ret;
-			
-			mo = malloc(BUFFSIZE);
-			
-			if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_CRC64) != LZMA_OK ) {
-				fprintf(stderr, "unable to initialize LZMA encoder\n");
+		fo = stdout;
+		if ( std_in ) {
+			fi = stdin;
+		} else {
+			if ( !(fi=fopen(file[i], "rb")) ) {
+				fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
 				exit(EXIT_FAILURE);
 			}
-			
-			for (pt=0; pt<len; pt+=BUFFSIZE) {
-				strm.next_in = &m[off+pt];
-				strm.avail_in = len-pt >= BUFFSIZE ? BUFFSIZE : len-pt;
-				strm.next_out = mo;
-				strm.avail_out = BUFFSIZE;
-				do {
-					ret = lzma_code(&strm, LZMA_RUN);
-					if ( ret != LZMA_OK ) {
-						fprintf(stderr, "error in LZMA_RUN\n");
-						exit(EXIT_FAILURE);
-					}
-					if ( BUFFSIZE - strm.avail_out > 0 ) {
-						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-							perror("writing to temp file failed");
-							exit(EXIT_FAILURE);
-						}
-						strm.next_out = mo;
-						strm.avail_out = BUFFSIZE;
-					}
-				} while ( strm.avail_in );
-			}
-			
-			strm.next_out = mo;
-			strm.avail_out = BUFFSIZE;
-			do {
-				ret = lzma_code(&strm, LZMA_FINISH);
-				if ( ret != LZMA_OK && ret != LZMA_STREAM_END ) {
-					fprintf(stderr, "error in LZMA_FINISH\n");
+			if ( !opt_stdout ) {
+				snprintf(str, sizeof(str), "%s.xz", file[i]);
+				if ( !(fo=fopen(str, "wb")) ) {
+					perror("error creating target archive");
 					exit(EXIT_FAILURE);
 				}
-				if ( BUFFSIZE - strm.avail_out > 0 ) {
-					if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-						perror("writing to temp file failed");
-						exit(EXIT_FAILURE);
-					}
-					strm.next_out = mo;
-					strm.avail_out = BUFFSIZE;
-				}
-			} while ( ret == LZMA_OK );
-			lzma_end(&strm);
-			
-			free(mo);
-			
-			if (opt_verbose && !opt_stdout) {
-				printf("%ld ", p);
-				fflush(stdout);
 			}
 		}
-
-		if (opt_verbose && !opt_stdout) {
-			printf("] ");
-		}
-
-		if ( !std_in ) munmap(m, s.st_size); else free(m);
 		
-		if ( std_in || opt_stdout ) {
-			for ( p=0; p<threads; p++ ) {
-				fseek(ftemp[p], 0, SEEK_SET);
-				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
-					if ( write(STDOUT_FILENO, buf, rd) < 0 ) {
-						perror("writing to standard output failed");
-						exit(EXIT_FAILURE);
-					}
-				}
-				if (rd < 0) {
-					perror("reading from temporary file failed");
-					exit(EXIT_FAILURE);
-				}
-				fclose(ftemp[p]);
+		if ( opt_verbose ) {
+			if ( fo != stdout ) {
+				fprintf(stderr, "%s -> %ld/%ld thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
+			} else {
+				fprintf(stderr, "%ld thread%c: [", threads, threads != 1 ? 's' : ' ');
 			}
-			free(ftemp);
-			return 0;
+			fflush(stderr);
 		}
 		
-		snprintf(str, sizeof(str), "%s.xz", file[i]);
-		if ( !(f=fopen(str,"wb")) ) {
-			perror("error creating target archive");
-			exit(EXIT_FAILURE);
-		}
+		m  = malloc(threads*chunk_size);
 		
 		new_action.sa_handler = term_handler;
 		sigemptyset (&new_action.sa_mask);
@@ -383,24 +281,112 @@ next:
 		sigaction(SIGTERM, NULL, &old_action);
 		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
-		for ( ts=p=0; p<threads; p++ ) {
-			fseek(ftemp[p], 0, SEEK_SET);
-			while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
-				if ( !fwrite(buf, 1, rd, f) ) {
-					unlink(str);
-					perror("writing to archive failed");
-					exit(EXIT_FAILURE);
-				} else ts += rd;
+		ftemp = malloc(threads*sizeof(ftemp[0]));
+		
+		while ( !feof(fi) ) {
+			size_t actrd;
+			
+			for (p=0; p<threads; p++) {
+				ftemp[p] = tmpfile();
 			}
-			if (rd < 0) {
-				perror("reading from temporary file failed");
-				unlink(str);
+			
+			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && rd < threads*chunk_size; rd += actrd) {
+				actrd = fread(&m[rd], 1, threads*chunk_size-actrd, fi);
+			}
+			if (ferror(fi)) {
+				perror("error in reading input");
 				exit(EXIT_FAILURE);
 			}
-			fclose(ftemp[p]);
+
+#pragma omp parallel for private(p) num_threads(threads)
+			for ( p=0; p<(rd+chunk_size-1)/chunk_size; p++ ) {
+				off_t pt, len = rd-p*chunk_size >= chunk_size ? chunk_size : rd-p*chunk_size;
+				uint8_t *mo;
+				lzma_stream strm = LZMA_STREAM_INIT;
+				lzma_ret ret;
+				
+				mo = malloc(BUFFSIZE);
+				
+				if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_CRC64) != LZMA_OK ) {
+					fprintf(stderr, "unable to initialize LZMA encoder\n");
+					exit(EXIT_FAILURE);
+				}
+				
+				for (pt=0; pt<len; pt+=BUFFSIZE) {
+					strm.next_in = &m[p*chunk_size+pt];
+					strm.avail_in = len-pt >= BUFFSIZE ? BUFFSIZE : len-pt;
+					strm.next_out = mo;
+					strm.avail_out = BUFFSIZE;
+					do {
+						ret = lzma_code(&strm, LZMA_RUN);
+						if ( ret != LZMA_OK ) {
+							fprintf(stderr, "error in LZMA_RUN\n");
+							exit(EXIT_FAILURE);
+						}
+						if ( BUFFSIZE - strm.avail_out > 0 ) {
+							if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+								perror("writing to temp file failed");
+								exit(EXIT_FAILURE);
+							}
+							strm.next_out = mo;
+							strm.avail_out = BUFFSIZE;
+						}
+					} while ( strm.avail_in );
+				}
+				
+				strm.next_out = mo;
+				strm.avail_out = BUFFSIZE;
+				do {
+					ret = lzma_code(&strm, LZMA_FINISH);
+					if ( ret != LZMA_OK && ret != LZMA_STREAM_END ) {
+						fprintf(stderr, "error in LZMA_FINISH\n");
+						exit(EXIT_FAILURE);
+					}
+					if ( BUFFSIZE - strm.avail_out > 0 ) {
+						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+							perror("writing to temp file failed");
+							exit(EXIT_FAILURE);
+						}
+						strm.next_out = mo;
+						strm.avail_out = BUFFSIZE;
+					}
+				} while ( ret == LZMA_OK );
+				lzma_end(&strm);
+				
+				free(mo);
+				
+				if ( opt_verbose ) {
+					fprintf(stderr, "%ld ", p);
+					fflush(stderr);
+				}
+			}
+			
+			for ( p=0; p<threads; p++ ) {
+				fseek(ftemp[p], 0, SEEK_SET);
+				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
+					if ( fwrite(buf, 1, rd, fo) != rd ) {
+						if ( fo != stdout ) unlink(str);
+						perror("writing to archive failed");
+						exit(EXIT_FAILURE);
+					} else ts += rd;
+				}
+				if (rd < 0) {
+					perror("reading from temporary file failed");
+					if ( fo != stdout ) unlink(str);
+					exit(EXIT_FAILURE);
+				}
+				fclose(ftemp[p]);
+			}
 		}
-		fclose(f);
+		
+		if ( fi != stdin ) fclose(fi);
+		
+		if ( opt_verbose ) {
+			fprintf(stderr, "] ");
+		}
+
 		free(ftemp);
+		if ( fo != stdout ) fclose(fo); else return 0;
 		
 		if ( chmod(str, s.st_mode) ) {
 			perror("warning: unable to change archive permissions");
