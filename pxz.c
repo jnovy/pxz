@@ -290,7 +290,7 @@ int main( int argc, char **argv ) {
 				ftemp[p] = tmpfile();
 			}
 			
-			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && rd < threads*chunk_size; rd += actrd) {
+			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && (uint64_t)rd < threads*chunk_size; rd += actrd) {
 				actrd = fread(&m[rd], 1, threads*chunk_size-actrd, fi);
 			}
 			if (ferror(fi)) {
@@ -364,7 +364,7 @@ int main( int argc, char **argv ) {
 			for ( p=0; p<threads; p++ ) {
 				fseek(ftemp[p], 0, SEEK_SET);
 				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
-					if ( fwrite(buf, 1, rd, fo) != rd ) {
+					if ( fwrite(buf, 1, rd, fo) != (size_t)rd ) {
 						if ( fo != stdout ) unlink(str);
 						perror("writing to archive failed");
 						exit(EXIT_FAILURE);
