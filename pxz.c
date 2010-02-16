@@ -355,7 +355,7 @@ int main( int argc, char **argv ) {
 			}
 			
 			for ( p=0; p<threads; p++ ) {
-				fseek(ftemp[p], 0, SEEK_SET);
+				rewind(ftemp[p]);
 				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 					if ( fwrite(buf, 1, rd, fo) != (size_t)rd ) {
 						error(0, errno, "writing to archive failed");
@@ -372,13 +372,13 @@ int main( int argc, char **argv ) {
 					}
 					exit(EXIT_FAILURE);
 				}
-				if ( fclose(ftemp[p]) ) {
-					error(EXIT_FAILURE, errno, "error closing temp file");
+				if ( ferror(ftemp[p]) || fclose(ftemp[p]) ) {
+					error(0, errno, "error closing temp file");
 				}
 			}
 		}
 		
-		if ( fi != stdin && fclose(fi) ) {
+		if ( fi != stdin && (ferror(fi) || fclose(fi)) ) {
 			error(0, errno, "error closing input file");
 		}
 		
@@ -389,7 +389,7 @@ int main( int argc, char **argv ) {
 		free(ftemp);
 		
 		if ( fo != stdout ) {
-			if ( fclose(fo) ) {
+			if ( ferror(fo) || fclose(fo) ) {
 				error(0, errno, "error closing target archive");
 			}
 		} else return 0;
