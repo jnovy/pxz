@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <error.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -115,7 +116,7 @@ const struct option long_opts[] = {
 
 void __attribute__((noreturn)) run_xz( char **argv ) {
 	execvp(XZ_BINARY, argv);
-	perror("xz execution failed");
+	error(0, errno, "execution of "XZ_BINARY" binary failed");
 	exit(EXIT_FAILURE);
 }
 
@@ -185,15 +186,16 @@ void parse_args( int argc, char **argv ) {
 			}
 			
 			if ( stat(file[c], &s)) {
-				fprintf(stderr, "can't stat '%s'.\n", file[c]);
-				exit(EXIT_FAILURE);
+				error(EXIT_FAILURE, errno, "can't stat '%s'", file[c]);
 			}
 		}
 	}
 }
 
 void __attribute__((noreturn) )term_handler( int sig __attribute__ ((unused)) ) {
-	if ( fo != stdout ) unlink(str);
+	if ( fo != stdout && unlink(str) ) {
+		error(0, errno, "error deleting corrupted target archive %s", str);
+	}
 	exit(EXIT_FAILURE);
 }
 
@@ -223,15 +225,14 @@ int main( int argc, char **argv ) {
 #endif
 		if ( (rd=strlen(file[i])) >= 3 && !strncmp(&file[i][rd-3], ".xz", 3) ) {
 			if (opt_verbose) {
-				fprintf(stderr, "ignoring '%s', it seems to be already compressed\n", file[i]);
+				error(EXIT_FAILURE, 0, "ignoring '%s', it seems to be already compressed", file[i]);
 			}
 			continue;
 		}
 		
 		if ( !std_in ) {
 			if ( stat(file[i], &s)) {
-				fprintf(stderr, "can't stat '%s'.\n", file[i]);
-				exit(EXIT_FAILURE);
+				error(EXIT_FAILURE, errno, "can't stat '%s'", file[i]);
 			}
 		}
 		
@@ -247,14 +248,12 @@ int main( int argc, char **argv ) {
 			fi = stdin;
 		} else {
 			if ( !(fi=fopen(file[i], "rb")) ) {
-				fprintf(stderr, "can't open '%s' for reading.\n", file[i]);
-				exit(EXIT_FAILURE);
+				error(EXIT_FAILURE, errno, "can't open '%s' for reading", file[i]);
 			}
 			if ( !opt_stdout ) {
 				snprintf(str, sizeof(str), "%s.xz", file[i]);
 				if ( !(fo=fopen(str, "wb")) ) {
-					perror("error creating target archive");
-					exit(EXIT_FAILURE);
+					error(EXIT_FAILURE, errno, "error creating target archive '%s'", str);
 				}
 			}
 		}
@@ -294,8 +293,7 @@ int main( int argc, char **argv ) {
 				actrd = fread(&m[rd], 1, threads*chunk_size-actrd, fi);
 			}
 			if (ferror(fi)) {
-				perror("error in reading input");
-				exit(EXIT_FAILURE);
+				error(EXIT_FAILURE, errno, "error in reading input");
 			}
 
 #pragma omp parallel for private(p) num_threads(threads)
@@ -308,8 +306,7 @@ int main( int argc, char **argv ) {
 				mo = malloc(BUFFSIZE);
 				
 				if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_CRC64) != LZMA_OK ) {
-					fprintf(stderr, "unable to initialize LZMA encoder\n");
-					exit(EXIT_FAILURE);
+					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
 				}
 				
 				for (pt=0; pt<len; pt+=BUFFSIZE) {
@@ -320,13 +317,11 @@ int main( int argc, char **argv ) {
 					do {
 						ret = lzma_code(&strm, LZMA_RUN);
 						if ( ret != LZMA_OK ) {
-							fprintf(stderr, "error in LZMA_RUN\n");
-							exit(EXIT_FAILURE);
+							error(EXIT_FAILURE, 0, "error in LZMA_RUN");
 						}
 						if ( BUFFSIZE - strm.avail_out > 0 ) {
 							if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-								perror("writing to temp file failed");
-								exit(EXIT_FAILURE);
+								error(EXIT_FAILURE, errno, "writing to temp file failed");
 							}
 							strm.next_out = mo;
 							strm.avail_out = BUFFSIZE;
@@ -339,13 +334,11 @@ int main( int argc, char **argv ) {
 				do {
 					ret = lzma_code(&strm, LZMA_FINISH);
 					if ( ret != LZMA_OK && ret != LZMA_STREAM_END ) {
-						fprintf(stderr, "error in LZMA_FINISH\n");
-						exit(EXIT_FAILURE);
+						error(EXIT_FAILURE, 0, "error in LZMA_FINISH");
 					}
 					if ( BUFFSIZE - strm.avail_out > 0 ) {
 						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-							perror("writing to temp file failed");
-							exit(EXIT_FAILURE);
+							error(EXIT_FAILURE, errno, "writing to temp file failed");
 						}
 						strm.next_out = mo;
 						strm.avail_out = BUFFSIZE;
@@ -365,38 +358,51 @@ int main( int argc, char **argv ) {
 				fseek(ftemp[p], 0, SEEK_SET);
 				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 					if ( fwrite(buf, 1, rd, fo) != (size_t)rd ) {
-						if ( fo != stdout ) unlink(str);
-						perror("writing to archive failed");
+						error(0, errno, "writing to archive failed");
+						if ( fo != stdout && unlink(str) ) {
+							error(0, errno, "error deleting corrupted target archive %s", str);
+						}
 						exit(EXIT_FAILURE);
 					} else ts += rd;
 				}
 				if (rd < 0) {
-					perror("reading from temporary file failed");
-					if ( fo != stdout ) unlink(str);
+					error(0, errno, "reading from temporary file failed");
+					if ( fo != stdout && unlink(str) ) {
+						error(0, errno, "error deleting corrupted target archive %s", str);
+					}
 					exit(EXIT_FAILURE);
 				}
-				fclose(ftemp[p]);
+				if ( fclose(ftemp[p]) ) {
+					error(EXIT_FAILURE, errno, "error closing temp file");
+				}
 			}
 		}
 		
-		if ( fi != stdin ) fclose(fi);
+		if ( fi != stdin && fclose(fi) ) {
+			error(0, errno, "error closing input file");
+		}
 		
 		if ( opt_verbose ) {
 			fprintf(stderr, "] ");
 		}
 
 		free(ftemp);
-		if ( fo != stdout ) fclose(fo); else return 0;
+		
+		if ( fo != stdout ) {
+			if ( fclose(fo) ) {
+				error(0, errno, "error closing target archive");
+			}
+		} else return 0;
 		
 		if ( chmod(str, s.st_mode) ) {
-			perror("warning: unable to change archive permissions");
+			error(0, errno, "warning: unable to change archive permissions");
 		}
 
 		u.actime = s.st_atime;
 		u.modtime = s.st_mtime;
 		
 		if ( utime(str, &u) ) {
-			perror("warning: unable to change archive timestamp");
+			error(0, errno, "warning: unable to change archive timestamp");
 		}
 		
 		sigaction(SIGINT, &old_action, NULL);
@@ -404,10 +410,12 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, &old_action, NULL);
 		
 		if ( opt_verbose ) {
-			printf("%ld -> %ld %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
+			fprintf(stderr, "%ld -> %ld %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
 		}
 		
-		if ( !opt_keep ) unlink(file[i]);
+		if ( !opt_keep && unlink(file[i]) ) {
+			error(0, errno, "error deleting input file %s", file[i]);
+		}
 	}
 	
 	return 0;
