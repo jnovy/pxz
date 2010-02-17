@@ -21,6 +21,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdio_ext.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -199,6 +200,21 @@ void __attribute__((noreturn) )term_handler( int sig __attribute__ ((unused)) ) 
 	exit(EXIT_FAILURE);
 }
 
+int close_stream( FILE *f ) {
+	if ( ferror(f) ) {
+		if ( !fclose(f) ) {
+			errno = 0;
+		}
+		return EOF;
+	}
+	
+	if ( fclose(f) && (__fpending(f) || errno != EBADF) ) {
+		return EOF;
+	}
+	
+	return 0;
+}
+
 int main( int argc, char **argv ) {
 	int i;
 	uint64_t p, threads, chunk_size;
@@ -372,14 +388,14 @@ int main( int argc, char **argv ) {
 					}
 					exit(EXIT_FAILURE);
 				}
-				if ( ferror(ftemp[p]) || fclose(ftemp[p]) ) {
-					error(0, errno, "error closing temp file");
+				if ( close_stream(ftemp[p]) ) {
+					error(0, errno, "I/O error in temp file");
 				}
 			}
 		}
 		
-		if ( fi != stdin && (ferror(fi) || fclose(fi)) ) {
-			error(0, errno, "error closing input file");
+		if ( fi != stdin && close_stream(fi) ) {
+			error(0, errno, "I/O error in input file");
 		}
 		
 		if ( opt_verbose ) {
@@ -389,8 +405,8 @@ int main( int argc, char **argv ) {
 		free(ftemp);
 		
 		if ( fo != stdout ) {
-			if ( ferror(fo) || fclose(fo) ) {
-				error(0, errno, "error closing target archive");
+			if ( close_stream(fo) ) {
+				error(0, errno, "I/O error in target archive");
 			}
 		} else return 0;
 		
