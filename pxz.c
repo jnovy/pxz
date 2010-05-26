@@ -65,11 +65,12 @@ size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 unsigned opt_force, opt_stdout;
+double opt_context_size = 3;
 FILE *fi, *fo;
 char **file;
 int files;
 
-const char short_opts[] = "cC:defF:hHlkM:qQrS:tT:vVz0123456789";
+const char short_opts[] = "cC:defF:hHlkM:qQrS:tT:D:vVz0123456789";
 
 const struct option long_opts[] = {
 	// Operation mode
@@ -91,6 +92,7 @@ const struct option long_opts[] = {
 	{ "check",          required_argument, NULL,  'C' },
 	{ "memory",         required_argument, NULL,  'M' },
 	{ "threads",        required_argument, NULL,  'T' },
+	{ "context-size",   required_argument, NULL,  'D' },
 	{ "extreme",        no_argument,       NULL,  'e' },
 	{ "fast",           no_argument,       NULL,  '0' },
 	{ "best",           no_argument,       NULL,  '9' },
@@ -151,11 +153,19 @@ void parse_args( int argc, char **argv ) {
 			case 'T':
 				opt_threads = atoi(optarg);
 				break;
+			case 'D':
+				opt_context_size = atof(optarg);
+				if ( opt_context_size <= 0 ) {
+					error(EXIT_FAILURE, 0, "Invalid context size specified");
+				}
+				break;
 			case 'h':
 			case 'H':
 				printf("Parallel PXZ-"PXZ_VERSION"-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
 					"Options:\n"
-					"  -T, --threads       specifies maximum threads to run simultaneously\n\n"
+					"  -T, --threads       maximum number of threads to run simultaneously\n"
+					"  -D, --context-size  per-thread compression context size as a multiple\n"
+					"                      of dictionary size. Default is 3.\n\n"
 					"Usage and other options are same as in XZ:\n\n");
 				run_xz(argv);
 				break;
@@ -252,9 +262,13 @@ int main( int argc, char **argv ) {
 			}
 		}
 		
-		chunk_size = 3<<(opt_complevel <= 1 ? 16 : opt_complevel + 17);
+		chunk_size = opt_context_size*(1<<(opt_complevel <= 1 ? 16 : opt_complevel + 17));
 		chunk_size = (chunk_size + page_size)&~(page_size-1);
-
+		
+		if ( opt_verbose ) {
+			fprintf(stderr, "context size per thread: %ld B\n", chunk_size);
+		}
+		
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
 			threads = opt_threads;
 		}
