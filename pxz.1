@@ -1,0 +1,62 @@
+.TH PXZ 1 "Jun 2010" pxz "Parallel XZ"
+.SH NAME
+pxz \- Parallel LZMA compressor compatible with XZ.
+.SH SYNOPSIS
+\fBpxz\fR [\fBoptions\fR]... [\fIfile\fR]...
+
+.SH DESCRIPTION
+.B pxz
+is a compression utility that takes advantage of running
+XZ compression simultaneously on different parts of an input file on
+multiple cores and processors. This significantly speeds up compression time.
+.SH OPTIONS
+.TP
+.I "\-v"
+Be verbose.
+.TP
+.I "\-h," "\-\-help"
+Display help.
+.TP
+.I "\-f," "\-\-force"
+Force operation.
+.TP
+.I "\-c," "\-\-stdout"
+Write results to standard output.
+.TP
+.I "\-k," "\-\-keep"
+Write results to standard output.
+.TP
+.I "\-T," "\-\-threads"
+Maximal number of threads to run simultaneously.
+.TP
+.I "\-D," "\-\-context\-size"
+Context size per one thread specified as a multiple of dictionary size for active compression level.
+.TP
+.I "\-V," "\-\-version"
+Display version of PXZ.
+.SH EXAMPLES
+.TP
+pxz file1 file2
+Compress file1 and file2 to file1.xz and file2.xz using default settings.
+.TP
+pxz -T4 file1
+Compress file1 with default compression and maximum of 4 threads.
+.TP
+pxz -k -9 file1
+Use maximal compression and keep the original file1, use default number of threads.
+.TP
+pxz -f -T4 file1
+Compress file with default compression and with 4 threads.
+.TP
+pxz -kvf -3 -T8 file1
+Use -3 compression, keep the original file, use 8 threads and show progress.
+.TP
+tar Oc dir1 | pxz -D 12 -cv - > dir1.tar.xz
+Move dir1 into tar, then compress it with the context of 12 sizes of dictionary
+per thread, show progress and write result to dir1.tar.xz.
+.SH "SEE ALSO"
+.BR xz (1)
+.SH AUTHOR
+Jindrich Novy <jnovy@users.sourceforge.net>
+.SH BUGS
+Report bugs via http://bugzilla.redhat.com/bugzilla/
