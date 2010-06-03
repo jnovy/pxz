@@ -1,12 +1,10 @@
 NAME=pxz
 VERSION=4.999.9beta
 CC=gcc
-WARNINGS=-Wall -Wshadow -Wcast-align -Winline -Wextra -Wmissing-noreturn
-CFLAGS+=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\"
-#CFLAGS+=-DDEBUG -ggdb3
-CFLAGS+=-O2 -fopenmp
+CFLAGS?=-O2 -Wall -Wshadow -Wcast-align -Winline -Wextra -Wmissing-noreturn -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+CFLAGS+=-fopenmp
 LDFLAGS+=-llzma
-SOURCES=$(NAME).c Makefile
+SOURCES=$(NAME).c Makefile COPYING $(NAME).1
 OBJECTS=
 EXECUTE=./$(NAME) CONTENTS.cpio
 BINDIR?=/usr/bin
@@ -15,7 +13,7 @@ MANDIR?=/usr/share/man
 all: $(OBJECTS) $(NAME)
 
 $(NAME): $(SOURCES) $(OBJECTS)
-	$(CC) $(WARNINGS) $(OBJECTS) $(CFLAGS) $(LDFLAGS) $(NAME).c -o $(NAME)
+	$(CC) $(OBJECTS) $(CFLAGS) $(LDFLAGS) -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\" $(NAME).c -o $(NAME)
 
 clean:
 	rm -f *.o $(NAME)
@@ -34,6 +32,8 @@ dist: $(NAME)
 install: $(NAME)
 	mkdir -p $(DESTDIR)$(BINDIR)
 	cp $(NAME) $(DESTDIR)$(BINDIR)
+	mkdir -p $(DESTDIR)$(MANDIR)/man1
+	cp $(NAME).1 $(DESTDIR)$(MANDIR)/man1
 
 ddd: $(NAME)
 	ddd --args $(EXECUTE)
