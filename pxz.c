@@ -273,7 +273,7 @@ int main( int argc, char **argv ) {
 			}
 		}
 		
-		chunk_size = lzma_options.dict_size * 3;
+		chunk_size = opt_context_size * lzma_options.dict_size;
 		chunk_size = (chunk_size + page_size)&~(page_size-1);
 		
 		if ( opt_verbose ) {
