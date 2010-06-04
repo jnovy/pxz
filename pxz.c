@@ -35,8 +35,10 @@
 #include <signal.h>
 #include <getopt.h>
 #include <fcntl.h>
-#include <omp.h>
 #include <lzma.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #ifndef XZ_BINARY
 #define XZ_BINARY "xz"
