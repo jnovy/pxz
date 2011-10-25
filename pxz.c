@@ -277,7 +277,7 @@ int main( int argc, char **argv ) {
 		chunk_size = (chunk_size + page_size)&~(page_size-1);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "context size per thread: %ld B\n", chunk_size);
+			fprintf(stderr, "context size per thread: %llu B\n", chunk_size);
 		}
 		
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
@@ -301,9 +301,9 @@ int main( int argc, char **argv ) {
 		
 		if ( opt_verbose ) {
 			if ( fo != stdout ) {
-				fprintf(stderr, "%s -> %ld/%ld thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%s -> %llu/%llu thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
 			} else {
-				fprintf(stderr, "%ld thread%c: [", threads, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%llu thread%c: [", threads, threads != 1 ? 's' : ' ');
 			}
 			fflush(stderr);
 		}
@@ -390,7 +390,7 @@ int main( int argc, char **argv ) {
 				free(mo);
 				
 				if ( opt_verbose ) {
-					fprintf(stderr, "%ld ", p);
+					fprintf(stderr, "%llu ", p);
 					fflush(stderr);
 				}
 			}
@@ -451,7 +451,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, &old_action, NULL);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "%ld -> %ld %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
+			fprintf(stderr, "%llu -> %zd %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
 		}
 		
 		if ( !opt_keep && unlink(file[i]) ) {
