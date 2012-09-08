@@ -21,11 +21,36 @@
 
 #include <string.h>
 #include <stdio.h>
+#ifdef HAVE_STDIO_EXT_H
 #include <stdio_ext.h>
+#else
+#include <sys/param.h>
+#ifdef BSD
+#define __fpending(fp) ((fp)->_p - (fp)->_bf._base)
+#endif
+#endif
 #include <stdlib.h>
 #include <inttypes.h>
 #include <unistd.h>
+#ifdef HAVE_ERROR_H
 #include <error.h>
+#else
+#include <stdarg.h>
+/* Emulate the error() function from GLIBC */
+char* program_name;
+void error(int status, int errnum, const char *format, ...) {
+	va_list argp;
+	fprintf(stderr, "%s: ", program_name);
+	va_start(argp, format);
+	vfprintf(stderr, format, argp);
+	va_end(argp);
+	if (errnum != 0)
+		fprintf(stderr, ": error code %d", errnum);
+	fprintf(stderr, "\n");
+	if (status != 0)
+		exit(status);
+}
+#endif 
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -236,7 +261,10 @@ int main( int argc, char **argv ) {
 	size_t page_size;
 	struct sigaction new_action, old_action;
 	struct utimbuf u;
-	
+
+#ifndef HAVE_ERROR_H
+	program_name = argv[0];
+#endif 
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
 	xzcmd = malloc(xzcmd_max);
