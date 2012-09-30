@@ -12,7 +12,7 @@ MANDIR?=/usr/share/man
 all: $(OBJECTS) $(NAME)
 
 $(NAME): $(SOURCES) $(OBJECTS)
-	$(CC) -o $(NAME) $(CFLAGS) $(NAME).c $(OBJECTS) $(LDFLAGS) -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\"
+	$(CC) -o $(NAME) $(CPPFLAGS) $(CFLAGS) $(NAME).c $(OBJECTS) $(LDFLAGS) -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\"
 
 clean:
 	rm -f *.o $(NAME)

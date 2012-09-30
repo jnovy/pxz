@@ -236,6 +236,8 @@ int main( int argc, char **argv ) {
 	size_t page_size;
 	struct sigaction new_action, old_action;
 	struct utimbuf u;
+	lzma_filter filters[LZMA_FILTERS_MAX + 1];
+	lzma_options_lzma lzma_options;
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
@@ -243,6 +245,13 @@ int main( int argc, char **argv ) {
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
+
+	lzma_lzma_preset(&lzma_options, opt_complevel);
+
+	filters[0].id = LZMA_FILTER_LZMA2;
+	filters[0].options = &lzma_options;
+	filters[1].id = LZMA_VLI_UNKNOWN;
+
 	
 	for (i=0; i<files; i++) {
 		int std_in = file[i][0] == '-' && file[i][1] == '\0';
@@ -264,11 +273,11 @@ int main( int argc, char **argv ) {
 			}
 		}
 		
-		chunk_size = opt_context_size*(1<<(opt_complevel <= 1 ? 16 : opt_complevel + 17));
+		chunk_size = opt_context_size * lzma_options.dict_size;
 		chunk_size = (chunk_size + page_size)&~(page_size-1);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "context size per thread: %ld B\n", chunk_size);
+			fprintf(stderr, "context size per thread: %llu B\n", chunk_size);
 		}
 		
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
@@ -292,9 +301,9 @@ int main( int argc, char **argv ) {
 		
 		if ( opt_verbose ) {
 			if ( fo != stdout ) {
-				fprintf(stderr, "%s -> %ld/%ld thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%s -> %llu/%llu thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
 			} else {
-				fprintf(stderr, "%ld thread%c: [", threads, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%llu thread%c: [", threads, threads != 1 ? 's' : ' ');
 			}
 			fflush(stderr);
 		}
@@ -337,7 +346,7 @@ int main( int argc, char **argv ) {
 				
 				mo = malloc(BUFFSIZE);
 				
-				if ( lzma_easy_encoder(&strm, opt_complevel, LZMA_CHECK_CRC64) != LZMA_OK ) {
+				if ( lzma_stream_encoder(&strm, filters, LZMA_CHECK_CRC64) != LZMA_OK ) {
 					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
 				}
 				
@@ -381,7 +390,7 @@ int main( int argc, char **argv ) {
 				free(mo);
 				
 				if ( opt_verbose ) {
-					fprintf(stderr, "%ld ", p);
+					fprintf(stderr, "%llu ", p);
 					fflush(stderr);
 				}
 			}
@@ -442,7 +451,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, &old_action, NULL);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "%ld -> %ld %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
+			fprintf(stderr, "%llu -> %zd %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
 		}
 		
 		if ( !opt_keep && unlink(file[i]) ) {
