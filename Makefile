@@ -1,7 +1,7 @@
 NAME=pxz
 VERSION=4.999.9beta
-CFLAGS?=-O2 -Wall -Wshadow -Wcast-align -Winline -Wextra -Wmissing-noreturn -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
-CFLAGS+=-fopenmp
+CFLAGS?=-O2 -Wall -Wshadow -Wcast-align -Winline -Wextra -Wmissing-noreturn
+CFLAGS+=-fopenmp -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
 LDFLAGS+=-llzma
 SOURCES=$(NAME).c Makefile COPYING $(NAME).1
 OBJECTS=
