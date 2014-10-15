@@ -128,6 +128,7 @@ void __attribute__((noreturn)) run_xz( char **argv ) {
 void parse_args( int argc, char **argv ) {
 	int c;
 	
+	opterr = 0;
 	while ((c = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (c) {
 			case '0': case '1': case '2': case '3': case '4':
@@ -178,6 +179,7 @@ void parse_args( int argc, char **argv ) {
 			case 'd':
 			case 't':
 			case 'l':
+			case '?':
 				run_xz(argv);
 			default:
 				break;
