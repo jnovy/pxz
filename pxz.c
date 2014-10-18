@@ -2,7 +2,7 @@
  * Parallel XZ 4.999.9beta,
  * runs LZMA compression simultaneously on multiple cores.
  *
- * Copyright (C) 2009 Jindrich Novy (jnovy@users.sourceforge.net)
+ * Copyright (C) 2009-2014 Jindrich Novy (jnovy@users.sourceforge.net)
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+
+#define __STDC_FORMAT_MACROS
 
 #include <string.h>
 #include <stdio.h>
@@ -279,7 +281,7 @@ int main( int argc, char **argv ) {
 		chunk_size = (chunk_size + page_size)&~(page_size-1);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "context size per thread: %llu B\n", chunk_size);
+			fprintf(stderr, "context size per thread: %"PRIu64" B\n", chunk_size);
 		}
 		
 		if ( opt_threads && (threads > opt_threads || opt_force) ) {
@@ -303,9 +305,9 @@ int main( int argc, char **argv ) {
 		
 		if ( opt_verbose ) {
 			if ( fo != stdout ) {
-				fprintf(stderr, "%s -> %llu/%llu thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%s -> %"PRIu64"/%"PRIu64" thread%c: [", file[i], threads, (s.st_size+chunk_size-1)/chunk_size, threads != 1 ? 's' : ' ');
 			} else {
-				fprintf(stderr, "%llu thread%c: [", threads, threads != 1 ? 's' : ' ');
+				fprintf(stderr, "%"PRIu64" thread%c: [", threads, threads != 1 ? 's' : ' ');
 			}
 			fflush(stderr);
 		}
@@ -392,7 +394,7 @@ int main( int argc, char **argv ) {
 				free(mo);
 				
 				if ( opt_verbose ) {
-					fprintf(stderr, "%llu ", p);
+					fprintf(stderr, "%"PRIu64" ", p);
 					fflush(stderr);
 				}
 			}
@@ -453,7 +455,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, &old_action, NULL);
 		
 		if ( opt_verbose ) {
-			fprintf(stderr, "%llu -> %zd %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
+			fprintf(stderr, "%"PRIu64" -> %zd %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
 		}
 		
 		if ( !opt_keep && unlink(file[i]) ) {
