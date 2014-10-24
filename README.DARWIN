@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# How to build and install under darwin using "port":
+
+env CPPFLAGS=-I/opt/local/include LDFLAGS=-L/opt/local/lib \
+    DESTDIR=/opt/local BINDIR=/bin MANDIR=/share/man \
+    make all install

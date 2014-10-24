@@ -23,11 +23,16 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <err.h>
+#if (!defined(__APPLE__) && !defined(__FreeBSD__))
 #include <stdio_ext.h>
+#endif
 #include <stdlib.h>
 #include <inttypes.h>
 #include <unistd.h>
+#if (!defined(__APPLE__) && !defined(__FreeBSD__))
 #include <error.h>
+#endif
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -60,6 +65,14 @@ do { \
 	xzcmd[__s+2] = c; \
 	xzcmd[__s+3] = '\0';\
 } while (0);
+
+#if defined(__FreeBSD__) || defined(__APPLE__)
+static size_t __fpending (FILE *fp)
+{
+    return (fp->_p - fp->_bf._base);
+}
+#endif
+
 
 FILE **ftemp;
 char str[0x100];
@@ -123,8 +136,7 @@ const struct option long_opts[] = {
 
 void __attribute__((noreturn)) run_xz( char **argv ) {
 	execvp(XZ_BINARY, argv);
-	error(0, errno, "execution of "XZ_BINARY" binary failed");
-	exit(EXIT_FAILURE);
+	err(EXIT_FAILURE, "execution of "XZ_BINARY" binary failed");
 }
 
 void parse_args( int argc, char **argv ) {
@@ -161,7 +173,7 @@ void parse_args( int argc, char **argv ) {
 			case 'D':
 				opt_context_size = atof(optarg);
 				if ( opt_context_size <= 0 ) {
-					error(EXIT_FAILURE, 0, "Invalid context size specified");
+					errx(EXIT_FAILURE, "Invalid context size specified");
 				}
 				break;
 			case 'h':
@@ -203,7 +215,7 @@ void parse_args( int argc, char **argv ) {
 			}
 			
 			if ( stat(file[c], &s)) {
-				error(EXIT_FAILURE, errno, "can't stat '%s'", file[c]);
+				err(EXIT_FAILURE, "can't stat '%s'", file[c]);
 			}
 		}
 	}
@@ -211,7 +223,7 @@ void parse_args( int argc, char **argv ) {
 
 void __attribute__((noreturn) )term_handler( int sig __attribute__ ((unused)) ) {
 	if ( fo != stdout && unlink(str) ) {
-		error(0, errno, "error deleting corrupted target archive %s", str);
+		err(EXIT_FAILURE, "error deleting corrupted target archive %s", str);
 	}
 	exit(EXIT_FAILURE);
 }
@@ -266,14 +278,14 @@ int main( int argc, char **argv ) {
 #endif
 		if ( (rd=strlen(file[i])) >= 3 && !strncmp(&file[i][rd-3], ".xz", 3) ) {
 			if (opt_verbose) {
-				error(EXIT_FAILURE, 0, "ignoring '%s', it seems to be already compressed", file[i]);
+				errx(EXIT_FAILURE, "ignoring '%s', it seems to be already compressed", file[i]);
 			}
 			continue;
 		}
 		
 		if ( !std_in ) {
 			if ( stat(file[i], &s)) {
-				error(EXIT_FAILURE, errno, "can't stat '%s'", file[i]);
+				err(EXIT_FAILURE, "can't stat '%s'", file[i]);
 			}
 		}
 		
@@ -293,12 +305,12 @@ int main( int argc, char **argv ) {
 			fi = stdin;
 		} else {
 			if ( !(fi=fopen(file[i], "rb")) ) {
-				error(EXIT_FAILURE, errno, "can't open '%s' for reading", file[i]);
+				err(EXIT_FAILURE, "can't open '%s' for reading", file[i]);
 			}
 			if ( !opt_stdout ) {
 				snprintf(str, sizeof(str), "%s.xz", file[i]);
 				if ( !(fo=fopen(str, "wb")) ) {
-					error(EXIT_FAILURE, errno, "error creating target archive '%s'", str);
+					err(EXIT_FAILURE, "error creating target archive '%s'", str);
 				}
 			}
 		}
@@ -338,7 +350,7 @@ int main( int argc, char **argv ) {
 				actrd = fread(&m[rd], 1, threads*chunk_size-actrd, fi);
 			}
 			if (ferror(fi)) {
-				error(EXIT_FAILURE, errno, "error in reading input");
+				err(EXIT_FAILURE, "error in reading input");
 			}
 
 #pragma omp parallel for private(p) num_threads(threads)
@@ -351,7 +363,7 @@ int main( int argc, char **argv ) {
 				mo = malloc(BUFFSIZE);
 				
 				if ( lzma_stream_encoder(&strm, filters, LZMA_CHECK_CRC64) != LZMA_OK ) {
-					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
+					err(EXIT_FAILURE, "unable to initialize LZMA encoder");
 				}
 				
 				for (pt=0; pt<len; pt+=BUFFSIZE) {
@@ -362,11 +374,11 @@ int main( int argc, char **argv ) {
 					do {
 						ret = lzma_code(&strm, LZMA_RUN);
 						if ( ret != LZMA_OK ) {
-							error(EXIT_FAILURE, 0, "error in LZMA_RUN");
+							errx(EXIT_FAILURE, "error in LZMA_RUN");
 						}
 						if ( BUFFSIZE - strm.avail_out > 0 ) {
 							if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-								error(EXIT_FAILURE, errno, "writing to temp file failed");
+								err(EXIT_FAILURE, "writing to temp file failed");
 							}
 							strm.next_out = mo;
 							strm.avail_out = BUFFSIZE;
@@ -379,11 +391,11 @@ int main( int argc, char **argv ) {
 				do {
 					ret = lzma_code(&strm, LZMA_FINISH);
 					if ( ret != LZMA_OK && ret != LZMA_STREAM_END ) {
-						error(EXIT_FAILURE, 0, "error in LZMA_FINISH");
+						errx(EXIT_FAILURE, "error in LZMA_FINISH");
 					}
 					if ( BUFFSIZE - strm.avail_out > 0 ) {
 						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
-							error(EXIT_FAILURE, errno, "writing to temp file failed");
+							err(EXIT_FAILURE, "writing to temp file failed");
 						}
 						strm.next_out = mo;
 						strm.avail_out = BUFFSIZE;
@@ -403,28 +415,28 @@ int main( int argc, char **argv ) {
 				rewind(ftemp[p]);
 				while ( (rd=fread(buf, 1, sizeof(buf), ftemp[p])) > 0 ) {
 					if ( fwrite(buf, 1, rd, fo) != (size_t)rd ) {
-						error(0, errno, "writing to archive failed");
+						warn("writing to archive failed");
 						if ( fo != stdout && unlink(str) ) {
-							error(0, errno, "error deleting corrupted target archive %s", str);
+							warn("error deleting corrupted target archive %s", str);
 						}
 						exit(EXIT_FAILURE);
 					} else ts += rd;
 				}
 				if (rd < 0) {
-					error(0, errno, "reading from temporary file failed");
+					warn("reading from temporary file failed");
 					if ( fo != stdout && unlink(str) ) {
-						error(0, errno, "error deleting corrupted target archive %s", str);
+						warn("error deleting corrupted target archive %s", str);
 					}
 					exit(EXIT_FAILURE);
 				}
 				if ( close_stream(ftemp[p]) ) {
-					error(0, errno, "I/O error in temp file");
+					warn("I/O error in temp file");
 				}
 			}
 		}
 		
 		if ( fi != stdin && close_stream(fi) ) {
-			error(0, errno, "I/O error in input file");
+			warn("I/O error in input file");
 		}
 		
 		if ( opt_verbose ) {
@@ -435,19 +447,19 @@ int main( int argc, char **argv ) {
 		
 		if ( fo != stdout ) {
 			if ( close_stream(fo) ) {
-				error(0, errno, "I/O error in target archive");
+				warn("I/O error in target archive");
 			}
 		} else return 0;
 		
 		if ( chmod(str, s.st_mode) ) {
-			error(0, errno, "warning: unable to change archive permissions");
+			warn("warning: unable to change archive permissions");
 		}
 
 		u.actime = s.st_atime;
 		u.modtime = s.st_mtime;
 		
 		if ( utime(str, &u) ) {
-			error(0, errno, "warning: unable to change archive timestamp");
+			warn("warning: unable to change archive timestamp");
 		}
 		
 		sigaction(SIGINT, &old_action, NULL);
@@ -459,7 +471,7 @@ int main( int argc, char **argv ) {
 		}
 		
 		if ( !opt_keep && unlink(file[i]) ) {
-			error(0, errno, "error deleting input file %s", file[i]);
+			warn("error deleting input file %s", file[i]);
 		}
 	}
 	
