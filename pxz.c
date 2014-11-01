@@ -19,7 +19,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#define __STDC_FORMAT_MACROS
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -38,7 +40,7 @@
 #include <getopt.h>
 #include <fcntl.h>
 #include <lzma.h>
-#ifdef _OPENMP
+#ifdef HAVE_OPENMP
 #include <omp.h>
 #endif
 
@@ -65,7 +67,7 @@ FILE **ftemp;
 char str[0x100];
 char buf[BUFFSIZE];
 char *xzcmd;
-size_t xzcmd_max;
+const size_t xzcmd_max = 10240;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 unsigned opt_force, opt_stdout;
@@ -166,16 +168,15 @@ void parse_args( int argc, char **argv ) {
 				break;
 			case 'h':
 			case 'H':
-				printf("Parallel PXZ-"PXZ_VERSION"-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
+				printf(PACKAGE_STRING". Parallel XZ\n\n"
 					"Options:\n"
 					"  -T, --threads       maximum number of threads to run simultaneously\n"
 					"  -D, --context-size  per-thread compression context size as a multiple\n"
 					"                      of dictionary size. Default is 3.\n\n"
 					"Usage and other options are same as in XZ:\n\n");
-				run_xz(argv);
 				break;
 			case 'V':
-				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
+				printf(PACKAGE_STRING"\n");
 				run_xz(argv);
 				break;
 			case 'd':
@@ -243,9 +244,12 @@ int main( int argc, char **argv ) {
 	lzma_filter filters[LZMA_FILTERS_MAX + 1];
 	lzma_options_lzma lzma_options;
 	
-	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
 	xzcmd = malloc(xzcmd_max);
+	if (!xzcmd) {
+		fprintf(stderr, "Failed to allocate %lu bytes for xz command.\n", xzcmd_max);
+		return -1;
+	}
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
@@ -259,7 +263,7 @@ int main( int argc, char **argv ) {
 	
 	for (i=0; i<files; i++) {
 		int std_in = file[i][0] == '-' && file[i][1] == '\0';
-#ifdef _OPENMP
+#ifdef HAVE_OPENMP
 		threads = omp_get_max_threads();
 #else
 		threads = 1;
