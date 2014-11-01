@@ -65,7 +65,7 @@ FILE **ftemp;
 char str[0x100];
 char buf[BUFFSIZE];
 char *xzcmd;
-size_t xzcmd_max;
+const size_t xzcmd_max = 10240;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 unsigned opt_force, opt_stdout;
@@ -243,9 +243,12 @@ int main( int argc, char **argv ) {
 	lzma_filter filters[LZMA_FILTERS_MAX + 1];
 	lzma_options_lzma lzma_options;
 	
-	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
 	xzcmd = malloc(xzcmd_max);
+	if (!xzcmd) {
+		fprintf(stderr, "Failed to allocate %lu bytes for xz command.\n", xzcmd_max);
+		return -1;
+	}
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
