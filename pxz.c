@@ -61,6 +61,15 @@ do { \
 	xzcmd[__s+3] = '\0';\
 } while (0);
 
+void * malloc_safe(size_t size) {
+   void * p = malloc(size);
+   if (!p) {
+	fprintf(stderr,"memory allocation failed\n");
+	exit(EXIT_FAILURE);
+   }
+   return p;
+};
+
 FILE **ftemp;
 char str[0x100];
 char buf[BUFFSIZE];
@@ -189,7 +198,7 @@ void parse_args( int argc, char **argv ) {
 	}
 	
 	if (!argv[optind]) {
-		file = malloc(sizeof(*file));
+		file = malloc_safe(sizeof(*file));
 		*file = "-";
 		files = 1;
 	} else {
@@ -245,7 +254,7 @@ int main( int argc, char **argv ) {
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
-	xzcmd = malloc(xzcmd_max);
+	xzcmd = malloc_safe(xzcmd_max);
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
@@ -312,7 +321,7 @@ int main( int argc, char **argv ) {
 			fflush(stderr);
 		}
 		
-		m  = malloc(threads*chunk_size);
+		m  = malloc_safe(threads*chunk_size);
 		
 		new_action.sa_handler = term_handler;
 		sigemptyset (&new_action.sa_mask);
@@ -325,7 +334,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, NULL, &old_action);
 		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
-		ftemp = malloc(threads*sizeof(ftemp[0]));
+		ftemp = malloc_safe(threads*sizeof(ftemp[0]));
 		
 		while ( !feof(fi) ) {
 			size_t actrd;
@@ -348,7 +357,7 @@ int main( int argc, char **argv ) {
 				lzma_stream strm = LZMA_STREAM_INIT;
 				lzma_ret ret;
 				
-				mo = malloc(BUFFSIZE);
+				mo = malloc_safe(BUFFSIZE);
 				
 				if ( lzma_stream_encoder(&strm, filters, LZMA_CHECK_CRC64) != LZMA_OK ) {
 					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
