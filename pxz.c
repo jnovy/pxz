@@ -254,7 +254,15 @@ int main( int argc, char **argv ) {
 	
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
-	xzcmd = malloc_safe(xzcmd_max);
+	xzcmd = malloc(xzcmd_max);
+	while (!xzcmd) {
+		if (xzcmd_max < 255) {
+			fprintf(stderr,"failed to allocate memory\n");
+			exit(EXIT_FAILURE);
+		}
+		xzcmd_max /= 2;
+		xzcmd = malloc(xzcmd_max);
+	}
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
