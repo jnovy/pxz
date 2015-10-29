@@ -61,6 +61,15 @@ do { \
 	xzcmd[__s+3] = '\0';\
 } while (0);
 
+void * malloc_safe(size_t size) {
+   void * p = malloc(size);
+   if (!p) {
+	fprintf(stderr,"memory allocation failed\n");
+	exit(EXIT_FAILURE);
+   }
+   return p;
+};
+
 FILE **ftemp;
 char str[0x100];
 char buf[BUFFSIZE];
@@ -73,8 +82,9 @@ double opt_context_size = 3;
 FILE *fi, *fo;
 char **file;
 int files;
+lzma_check opt_lzma_check = LZMA_CHECK_CRC64;
 
-const char short_opts[] = "cC:defF:hHlkM:qQrS:tT:D:vVz0123456789";
+const char short_opts[] = "cC:defF:hHlkM:qQrS:tT:D:vVz0123456789g";
 
 const struct option long_opts[] = {
 	// Operation mode
@@ -100,6 +110,7 @@ const struct option long_opts[] = {
 	{ "extreme",        no_argument,       NULL,  'e' },
 	{ "fast",           no_argument,       NULL,  '0' },
 	{ "best",           no_argument,       NULL,  '9' },
+	{ "crc32",          no_argument,       NULL,  'g' },
 	// Filters
 /*	{ "lzma1",          optional_argument, NULL,  OPT_LZMA1 },
 	{ "lzma2",          optional_argument, NULL,  OPT_LZMA2 },
@@ -168,6 +179,7 @@ void parse_args( int argc, char **argv ) {
 			case 'H':
 				printf("Parallel PXZ-"PXZ_VERSION"-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
 					"Options:\n"
+					"  -g, --crc32         use CRC32 checksum method (default CRC64)\n"
 					"  -T, --threads       maximum number of threads to run simultaneously\n"
 					"  -D, --context-size  per-thread compression context size as a multiple\n"
 					"                      of dictionary size. Default is 3.\n\n"
@@ -177,6 +189,9 @@ void parse_args( int argc, char **argv ) {
 			case 'V':
 				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
 				run_xz(argv);
+				break;
+			case 'g':
+				opt_lzma_check = LZMA_CHECK_CRC32;
 				break;
 			case 'd':
 			case 't':
@@ -189,7 +204,7 @@ void parse_args( int argc, char **argv ) {
 	}
 	
 	if (!argv[optind]) {
-		file = malloc(sizeof(*file));
+		file = malloc_safe(sizeof(*file));
 		*file = "-";
 		files = 1;
 	} else {
@@ -246,6 +261,14 @@ int main( int argc, char **argv ) {
 	xzcmd_max = sysconf(_SC_ARG_MAX);
 	page_size = sysconf(_SC_PAGE_SIZE);
 	xzcmd = malloc(xzcmd_max);
+	while (!xzcmd) {
+		if (xzcmd_max < 255) {
+			fprintf(stderr,"failed to allocate memory\n");
+			exit(EXIT_FAILURE);
+		}
+		xzcmd_max /= 2;
+		xzcmd = malloc(xzcmd_max);
+	}
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
 	parse_args(argc, argv);
@@ -312,7 +335,7 @@ int main( int argc, char **argv ) {
 			fflush(stderr);
 		}
 		
-		m  = malloc(threads*chunk_size);
+		m  = malloc_safe(threads*chunk_size);
 		
 		new_action.sa_handler = term_handler;
 		sigemptyset (&new_action.sa_mask);
@@ -325,7 +348,7 @@ int main( int argc, char **argv ) {
 		sigaction(SIGTERM, NULL, &old_action);
 		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
-		ftemp = malloc(threads*sizeof(ftemp[0]));
+		ftemp = malloc_safe(threads*sizeof(ftemp[0]));
 		
 		while ( !feof(fi) ) {
 			size_t actrd;
@@ -348,9 +371,9 @@ int main( int argc, char **argv ) {
 				lzma_stream strm = LZMA_STREAM_INIT;
 				lzma_ret ret;
 				
-				mo = malloc(BUFFSIZE);
+				mo = malloc_safe(BUFFSIZE);
 				
-				if ( lzma_stream_encoder(&strm, filters, LZMA_CHECK_CRC64) != LZMA_OK ) {
+				if ( lzma_stream_encoder(&strm, filters, opt_lzma_check) != LZMA_OK ) {
 					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
 				}
 				
