@@ -37,6 +37,7 @@
 #include <signal.h>
 #include <getopt.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <lzma.h>
 #ifdef _OPENMP
 #include <omp.h>
@@ -47,6 +48,7 @@
 #endif
 
 #define BUFFSIZE 0x10000
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 
 #define ADD_OPT(c) \
 do { \
@@ -70,6 +72,8 @@ void * malloc_safe(size_t size) {
    return p;
 };
 
+enum format_type {FORMAT_AUTO, FORMAT_XZ, FORMAT_LZMA};
+
 FILE **ftemp;
 char str[0x100];
 char buf[BUFFSIZE];
@@ -78,6 +82,7 @@ size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
 unsigned opt_force, opt_stdout;
+enum format_type opt_format;
 double opt_context_size = 3;
 FILE *fi, *fo;
 char **file;
@@ -155,6 +160,25 @@ void parse_args( int argc, char **argv ) {
 			case 'f':
 				opt_force = 1;
 				break;
+			case 'F': {
+				static const struct {
+					char str[8];
+					enum format_type format;
+				} types[] = {
+					{ "auto",   FORMAT_AUTO },
+					{ "xz",     FORMAT_XZ },
+					{ "lzma",   FORMAT_LZMA },
+					{ "alone",  FORMAT_LZMA },
+				};
+				
+				size_t i = 0;
+				while (strcmp(types[i].str, optarg) != 0)
+					if (++i == ARRAY_SIZE(types))
+						error(EXIT_FAILURE, 0, "invalid type");
+				
+				opt_format = types[i].format;
+				break;
+			}
 			case 'e':
 			case 'q':
 			case 'Q':
@@ -373,7 +397,17 @@ int main( int argc, char **argv ) {
 				
 				mo = malloc_safe(BUFFSIZE);
 				
-				if ( lzma_stream_encoder(&strm, filters, opt_lzma_check) != LZMA_OK ) {
+				switch (opt_format) {
+					case FORMAT_AUTO:
+					case FORMAT_XZ:
+						ret = lzma_stream_encoder(&strm, filters, opt_lzma_check);
+						break;
+					case FORMAT_LZMA:
+						ret = lzma_alone_encoder(&strm, filters[0].options);
+						break;
+				}
+				
+				if ( ret != LZMA_OK ) {
 					error(EXIT_FAILURE, errno, "unable to initialize LZMA encoder");
 				}
 				
