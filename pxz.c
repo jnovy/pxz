@@ -455,6 +455,7 @@ int main( int argc, char **argv ) {
 		}
 
 		free(ftemp);
+		free(m);
 		
 		if ( fo != stdout ) {
 			if ( close_stream(fo) ) {
