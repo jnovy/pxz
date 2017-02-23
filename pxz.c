@@ -42,6 +42,9 @@
 #include <omp.h>
 #endif
 
+#define PXZ_VERSION 4.999          //     PXZ_VERSION
+#define PXZ_BUILD_DATE __DATE__    //     PXZ_BUILD_DATE 
+
 #ifndef XZ_BINARY
 #define XZ_BINARY "xz"
 #endif
@@ -177,17 +180,17 @@ void parse_args( int argc, char **argv ) {
 				break;
 			case 'h':
 			case 'H':
-				printf("Parallel PXZ-"PXZ_VERSION"-"PXZ_BUILD_DATE", by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
+				printf("Parallel PXZ- %s - %s, by Jindrich Novy <jnovy@users.sourceforge.net>\n\n"
 					"Options:\n"
 					"  -g, --crc32         use CRC32 checksum method (default CRC64)\n"
 					"  -T, --threads       maximum number of threads to run simultaneously\n"
 					"  -D, --context-size  per-thread compression context size as a multiple\n"
 					"                      of dictionary size. Default is 3.\n\n"
-					"Usage and other options are same as in XZ:\n\n");
+					"Usage and other options are same as in XZ:\n\n", PXZ_VERSION, PXZ_BUILD_DATE);
 				run_xz(argv);
 				break;
 			case 'V':
-				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
+				printf("Parallel PXZ %s (build %s)\n", PXZ_VERSION, PXZ_BUILD_DATE);
 				run_xz(argv);
 				break;
 			case 'g':
