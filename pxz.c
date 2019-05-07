@@ -132,13 +132,13 @@ const struct option long_opts[] = {
 	{ NULL,             0,                 NULL,   0 }
 };
 
-void __attribute__((noreturn)) run_xz( char **argv ) {
-	execvp(XZ_BINARY, argv);
+void __attribute__((noreturn)) run_xz( char **argv, char **envp ) {
+	execve(XZ_BINARY, argv, envp);
 	error(0, errno, "execution of "XZ_BINARY" binary failed");
 	exit(EXIT_FAILURE);
 }
 
-void parse_args( int argc, char **argv ) {
+void parse_args( int argc, char **argv, char **envp ) {
 	int c;
 	
 	opterr = 0;
@@ -184,11 +184,11 @@ void parse_args( int argc, char **argv ) {
 					"  -D, --context-size  per-thread compression context size as a multiple\n"
 					"                      of dictionary size. Default is 3.\n\n"
 					"Usage and other options are same as in XZ:\n\n");
-				run_xz(argv);
+				run_xz(argv, envp);
 				break;
 			case 'V':
 				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
-				run_xz(argv);
+				run_xz(argv, envp);
 				break;
 			case 'g':
 				opt_lzma_check = LZMA_CHECK_CRC32;
@@ -197,7 +197,7 @@ void parse_args( int argc, char **argv ) {
 			case 't':
 			case 'l':
 			case '?':
-				run_xz(argv);
+				run_xz(argv, envp);
 			default:
 				break;
 		}
@@ -246,7 +246,7 @@ int close_stream( FILE *f ) {
 	return 0;
 }
 
-int main( int argc, char **argv ) {
+int main( int argc, char **argv, char **envp ) {
 	int i;
 	uint64_t p, threads, chunk_size;
 	uint8_t *m;
@@ -271,7 +271,7 @@ int main( int argc, char **argv ) {
 	}
 	snprintf(xzcmd, xzcmd_max, XZ_BINARY);
 	
-	parse_args(argc, argv);
+	parse_args(argc, argv, envp);
 
 	lzma_lzma_preset(&lzma_options, opt_complevel);
 
