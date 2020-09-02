@@ -281,6 +281,7 @@ int main( int argc, char **argv, char **envp ) {
 
 	
 	for (i=0; i<files; i++) {
+		ts = 0;
 		int std_in = file[i][0] == '-' && file[i][1] == '\0';
 #ifdef _OPENMP
 		threads = omp_get_max_threads();
