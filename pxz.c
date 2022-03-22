@@ -184,10 +184,12 @@ void parse_args( int argc, char **argv, char **envp ) {
 					"  -D, --context-size  per-thread compression context size as a multiple\n"
 					"                      of dictionary size. Default is 3.\n\n"
 					"Usage and other options are same as in XZ:\n\n");
+				fflush(stdout);
 				run_xz(argv, envp);
 				break;
 			case 'V':
 				printf("Parallel PXZ "PXZ_VERSION" (build "PXZ_BUILD_DATE")\n");
+				fflush(stdout);
 				run_xz(argv, envp);
 				break;
 			case 'g':
