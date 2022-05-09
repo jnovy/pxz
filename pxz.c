@@ -195,6 +195,17 @@ void parse_args( int argc, char **argv, char **envp ) {
 			case 'g':
 				opt_lzma_check = LZMA_CHECK_CRC32;
 				break;
+			case 'C':
+			        if (!strcmp(optarg, "none")) {
+			          opt_lzma_check = LZMA_CHECK_NONE;
+			        } else if (!strcmp(optarg, "crc32")) {
+			          opt_lzma_check = LZMA_CHECK_CRC32;
+			        } else if (!strcmp(optarg, "crc64")) {
+			          opt_lzma_check = LZMA_CHECK_CRC64;
+			        } else if (!strcmp(optarg, "sha256")) {
+			          opt_lzma_check = LZMA_CHECK_SHA256;
+			        }
+			        break;
 			case 'd':
 			case 't':
 			case 'l':
