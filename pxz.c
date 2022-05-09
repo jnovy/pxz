@@ -312,6 +312,7 @@ int main( int argc, char **argv, char **envp ) {
 		}
 		
 		fo = stdout;
+		umask(077);
 		if ( std_in ) {
 			fi = stdin;
 		} else {
