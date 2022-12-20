@@ -43,7 +43,7 @@
 #endif
 
 #ifndef XZ_BINARY
-#define XZ_BINARY "xz"
+#define XZ_BINARY "/usr/bin/xz"
 #endif
 
 #define BUFFSIZE 0x10000
