@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 /*
  * Parallel XZ 4.999.9beta,
  * runs LZMA compression simultaneously on multiple cores.
@@ -43,7 +45,7 @@
 #endif
 
 #ifndef XZ_BINARY
-#define XZ_BINARY "/usr/bin/xz"
+#define XZ_BINARY "xz"
 #endif
 
 #define BUFFSIZE 0x10000
@@ -133,7 +135,7 @@ const struct option long_opts[] = {
 };
 
 void __attribute__((noreturn)) run_xz( char **argv, char **envp ) {
-	execve(XZ_BINARY, argv, envp);
+	execvpe(XZ_BINARY, argv, envp);
 	error(0, errno, "execution of "XZ_BINARY" binary failed");
 	exit(EXIT_FAILURE);
 }
