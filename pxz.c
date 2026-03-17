@@ -35,6 +35,7 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <sys/resource.h>
 #include <utime.h>
 #include <signal.h>
 #include <getopt.h>
@@ -169,7 +170,26 @@ void parse_args( int argc, char **argv, char **envp ) {
 				opt_keep = 1;
 				break;
 			case 'T':
-				opt_threads = atoi(optarg);
+				{
+					int t = atoi(optarg);
+					if (t <= 0) {
+						error(EXIT_FAILURE, 0, "invalid number of threads: %s", optarg);
+					}
+					struct rlimit rl;
+					unsigned max_threads = 0;
+					if (getrlimit(RLIMIT_NOFILE, &rl) == 0 && rl.rlim_cur > 10) {
+						/* Reserve some FDs for stdin/stdout/stderr, input, output, etc. */
+						max_threads = rl.rlim_cur - 10;
+					}
+					if (max_threads == 0) {
+						max_threads = 1024;
+					}
+					if ((unsigned)t > max_threads) {
+						fprintf(stderr, "warning: capping threads from %d to %u (file descriptor limit)\n", t, max_threads);
+						t = max_threads;
+					}
+					opt_threads = t;
+				}
 				break;
 			case 'D':
 				opt_context_size = atof(optarg);
@@ -372,6 +392,9 @@ int main( int argc, char **argv, char **envp ) {
 			
 			for (p=0; p<threads; p++) {
 				ftemp[p] = tmpfile();
+				if (!ftemp[p]) {
+					error(EXIT_FAILURE, errno, "failed to create temporary file for thread %"PRIu64" (too many threads?)", p);
+				}
 			}
 			
 			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && (uint64_t)rd < threads*chunk_size; rd += actrd) {
