@@ -15,7 +15,7 @@ $(NAME): $(SOURCES) $(OBJECTS)
 	$(CC) -o $(NAME) $(CPPFLAGS) $(CFLAGS) $(NAME).c $(OBJECTS) $(LDFLAGS) -DPXZ_BUILD_DATE=\"`date +%Y%m%d`\" -DPXZ_VERSION=\"$(VERSION)\"
 
 clean:
-	rm -f *.o $(NAME)
+	rm -f *.o $(NAME) COPYING.test test.xz
 
 distclean: clean
 	rm -f *~
@@ -45,3 +45,13 @@ time: $(NAME)
 
 valgrind: $(NAME)
 	valgrind -v --tool=memcheck --leak-check=yes $(EXECUTE)
+
+
+test.xz: $(NAME) COPYING
+	./$(NAME) -3 -c COPYING > test.xz
+
+COPYING.test: test.xz
+	xz -dc test.xz > COPYING.test
+	cmp COPYING COPYING.test
+
+check: COPYING.test
