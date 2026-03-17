@@ -403,7 +403,7 @@ int main( int argc, char **argv, char **envp ) {
 							error(EXIT_FAILURE, 0, "error in LZMA_RUN");
 						}
 						if ( BUFFSIZE - strm.avail_out > 0 ) {
-							if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+							if ( fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) != BUFFSIZE - strm.avail_out ) {
 								error(EXIT_FAILURE, errno, "writing to temp file failed");
 							}
 							strm.next_out = mo;
@@ -420,7 +420,7 @@ int main( int argc, char **argv, char **envp ) {
 						error(EXIT_FAILURE, 0, "error in LZMA_FINISH");
 					}
 					if ( BUFFSIZE - strm.avail_out > 0 ) {
-						if ( !fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) ) {
+						if ( fwrite(mo, 1, BUFFSIZE - strm.avail_out, ftemp[p]) != BUFFSIZE - strm.avail_out ) {
 							error(EXIT_FAILURE, errno, "writing to temp file failed");
 						}
 						strm.next_out = mo;
