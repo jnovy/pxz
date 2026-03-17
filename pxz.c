@@ -40,6 +40,7 @@
 #include <signal.h>
 #include <getopt.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <lzma.h>
 #ifdef _OPENMP
 #include <omp.h>
@@ -143,7 +144,13 @@ void __attribute__((noreturn)) run_xz( char **argv, char **envp ) {
 
 void parse_args( int argc, char **argv, char **envp ) {
 	int c;
-	
+	char *progname = basename(argv[0]);
+
+	/* If invoked as *unxz* or *unpxz*, delegate to xz for decompression */
+	if (strstr(progname, "unxz") || strstr(progname, "unpxz")) {
+		run_xz(argv, envp);
+	}
+
 	opterr = 0;
 	while ((c = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (c) {
