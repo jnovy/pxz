@@ -81,7 +81,7 @@ char *xzcmd;
 size_t xzcmd_max;
 
 unsigned opt_complevel = 6, opt_stdout, opt_keep, opt_threads, opt_verbose;
-unsigned opt_force, opt_stdout;
+unsigned opt_force;
 double opt_context_size = 3;
 FILE *fi, *fo;
 char **file;
@@ -233,6 +233,8 @@ void parse_args( int argc, char **argv, char **envp ) {
 			          opt_lzma_check = LZMA_CHECK_CRC64;
 			        } else if (!strcmp(optarg, "sha256")) {
 			          opt_lzma_check = LZMA_CHECK_SHA256;
+			        } else {
+			          error(EXIT_FAILURE, 0, "unsupported check type '%s'", optarg);
 			        }
 			        break;
 			case 'd':
@@ -266,13 +268,15 @@ void parse_args( int argc, char **argv, char **envp ) {
 	}
 }
 
-void __attribute__((noreturn) )term_handler( int sig __attribute__ ((unused)) ) {
-	if ( fo != stdout && unlink(str) ) {
-		error(0, errno, "error deleting corrupted target archive %s", str);
+/* Use only async-signal-safe functions in signal handler */
+void __attribute__((noreturn)) term_handler( int sig __attribute__ ((unused)) ) {
+	if ( fo != stdout ) {
+		unlink(str);
 	}
-	exit(EXIT_FAILURE);
+	_exit(EXIT_FAILURE);
 }
 
+/* Save __fpending() result before fclose() to avoid use-after-free */
 int close_stream( FILE *f ) {
 	if ( ferror(f) ) {
 		if ( !fclose(f) ) {
@@ -281,7 +285,8 @@ int close_stream( FILE *f ) {
 		return EOF;
 	}
 	
-	if ( fclose(f) && (__fpending(f) || errno != EBADF) ) {
+	size_t pending = __fpending(f);
+	if ( fclose(f) && (pending || errno != EBADF) ) {
 		return EOF;
 	}
 	
@@ -295,13 +300,19 @@ int main( int argc, char **argv, char **envp ) {
 	struct stat s;
 	ssize_t rd, ts = 0;
 	size_t page_size;
-	struct sigaction new_action, old_action;
+	/* Use separate sigaction variables for each signal */
+	struct sigaction new_action, old_action_int, old_action_hup, old_action_term;
 	struct utimbuf u;
 	lzma_filter filters[LZMA_FILTERS_MAX + 1];
 	lzma_options_lzma lzma_options;
 	
-	xzcmd_max = sysconf(_SC_ARG_MAX);
-	page_size = sysconf(_SC_PAGE_SIZE);
+	/* Check sysconf() return values, fall back to safe defaults */
+	long arg_max = sysconf(_SC_ARG_MAX);
+	long pg_size = sysconf(_SC_PAGE_SIZE);
+	if (arg_max <= 0) arg_max = 4096;
+	if (pg_size <= 0) pg_size = 4096;
+	xzcmd_max = arg_max;
+	page_size = pg_size;
 	xzcmd = malloc(xzcmd_max);
 	while (!xzcmd) {
 		if (xzcmd_max < 255) {
@@ -331,8 +342,9 @@ int main( int argc, char **argv, char **envp ) {
 		threads = 1;
 #endif
 		if ( (rd=strlen(file[i])) >= 3 && !strncmp(&file[i][rd-3], ".xz", 3) ) {
+			/* Warn but do not exit when skipping already-compressed files */
 			if (opt_verbose) {
-				error(EXIT_FAILURE, 0, "ignoring '%s', it seems to be already compressed", file[i]);
+				error(0, 0, "ignoring '%s', it seems to be already compressed", file[i]);
 			}
 			continue;
 		}
@@ -363,7 +375,11 @@ int main( int argc, char **argv, char **envp ) {
 				error(EXIT_FAILURE, errno, "can't open '%s' for reading", file[i]);
 			}
 			if ( !opt_stdout ) {
-				snprintf(str, sizeof(str), "%s.xz", file[i]);
+				/* Detect output filename truncation */
+				int n = snprintf(str, sizeof(str), "%s.xz", file[i]);
+				if (n < 0 || (size_t)n >= sizeof(str)) {
+					error(EXIT_FAILURE, 0, "output filename too long for '%s'", file[i]);
+				}
 				if ( !(fo=fopen(str, "wb")) ) {
 					error(EXIT_FAILURE, errno, "error creating target archive '%s'", str);
 				}
@@ -385,18 +401,20 @@ int main( int argc, char **argv, char **envp ) {
 		sigemptyset (&new_action.sa_mask);
 		new_action.sa_flags = 0;
 		
-		sigaction(SIGINT, NULL, &old_action);
-		if (old_action.sa_handler != SIG_IGN) sigaction(SIGINT, &new_action, NULL);
-		sigaction(SIGHUP, NULL, &old_action);
-		if (old_action.sa_handler != SIG_IGN) sigaction(SIGHUP, &new_action, NULL);
-		sigaction(SIGTERM, NULL, &old_action);
-		if (old_action.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
+		/* Save each signal's old handler separately */
+		sigaction(SIGINT, NULL, &old_action_int);
+		if (old_action_int.sa_handler != SIG_IGN) sigaction(SIGINT, &new_action, NULL);
+		sigaction(SIGHUP, NULL, &old_action_hup);
+		if (old_action_hup.sa_handler != SIG_IGN) sigaction(SIGHUP, &new_action, NULL);
+		sigaction(SIGTERM, NULL, &old_action_term);
+		if (old_action_term.sa_handler != SIG_IGN) sigaction(SIGTERM, &new_action, NULL);
 		
 		ftemp = malloc_safe(threads*sizeof(ftemp[0]));
 		
 		while ( !feof(fi) ) {
 			size_t actrd;
 			
+			/* Check tmpfile() return value for NULL */
 			for (p=0; p<threads; p++) {
 				ftemp[p] = tmpfile();
 				if (!ftemp[p]) {
@@ -404,6 +422,7 @@ int main( int argc, char **argv, char **envp ) {
 				}
 			}
 			
+			/* Use rd (total read so far) for remaining size calculation */
 			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && (uint64_t)rd < threads*chunk_size; rd += actrd) {
 				actrd = fread(&m[rd], 1, threads*chunk_size-rd, fi);
 			}
@@ -480,7 +499,8 @@ int main( int argc, char **argv, char **envp ) {
 						exit(EXIT_FAILURE);
 					} else ts += rd;
 				}
-				if (rd < 0) {
+				/* fread returns size_t (>=0), use ferror() to detect read errors */
+				if (ferror(ftemp[p])) {
 					error(0, errno, "reading from temporary file failed");
 					if ( fo != stdout && unlink(str) ) {
 						error(0, errno, "error deleting corrupted target archive %s", str);
@@ -508,7 +528,7 @@ int main( int argc, char **argv, char **envp ) {
 			if ( close_stream(fo) ) {
 				error(0, errno, "I/O error in target archive");
 			}
-		} else return 0;
+		} else continue; /* Continue to next file instead of returning */
 		
 		if ( chmod(str, s.st_mode) ) {
 			error(0, errno, "warning: unable to change archive permissions");
@@ -521,9 +541,10 @@ int main( int argc, char **argv, char **envp ) {
 			error(0, errno, "warning: unable to change archive timestamp");
 		}
 		
-		sigaction(SIGINT, &old_action, NULL);
-		sigaction(SIGHUP, &old_action, NULL);
-		sigaction(SIGTERM, &old_action, NULL);
+		/* Restore each signal's original handler */
+		sigaction(SIGINT, &old_action_int, NULL);
+		sigaction(SIGHUP, &old_action_hup, NULL);
+		sigaction(SIGTERM, &old_action_term, NULL);
 		
 		if ( opt_verbose ) {
 			fprintf(stderr, "%"PRIu64" -> %zd %3.3f%%\n", s.st_size, ts, ts*100./s.st_size);
@@ -533,6 +554,9 @@ int main( int argc, char **argv, char **envp ) {
 			error(0, errno, "error deleting input file %s", file[i]);
 		}
 	}
+	
+	/* Free xzcmd to avoid memory leak */
+	free(xzcmd);
 	
 	return 0;
 }
