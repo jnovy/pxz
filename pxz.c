@@ -373,7 +373,7 @@ int main( int argc, char **argv, char **envp ) {
 			}
 			
 			for ( actrd=rd=0; !feof(fi) && !ferror(fi) && (uint64_t)rd < threads*chunk_size; rd += actrd) {
-				actrd = fread(&m[rd], 1, threads*chunk_size-actrd, fi);
+				actrd = fread(&m[rd], 1, threads*chunk_size-rd, fi);
 			}
 			if (ferror(fi)) {
 				error(EXIT_FAILURE, errno, "error in reading input");
